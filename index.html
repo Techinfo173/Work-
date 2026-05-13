@@ -9,18 +9,17 @@
 
         :root {
             --bg-page: #02080a;
-
-            --pill-top:    #1a3a36;
-            --pill-mid:    #0e2724;
+            --pill-top:    #1c3d38;
+            --pill-mid:    #0f2a26;
             --pill-bottom: #04100e;
-
             --text-color: #f0faf8;
             --icon-color: #f4fbf9;
-
             --glow-core: #d4fbf0;
             --glow-mid:  #4ee0c8;
             --glow-deep: #128878;
         }
+
+        * { box-sizing: border-box; }
 
         body {
             margin: 0;
@@ -35,45 +34,28 @@
             overflow: hidden;
         }
 
-        /*
-           GEMINI SPARKLE — 4-pointed concave star (the Gemini "spark" mark).
-           Tiled as an SVG data URI background-image to create the perimeter starfield.
-           The path uses Bezier curves to pinch the sides inward, giving the
-           recognizable 4-point flare shape (top/right/bottom/left points,
-           concave between them).
-        */
-
-        /* Ambient background sparkle field (faint, behind the pill) */
-        body::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image:
-                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M6 0.5 C6 4 6 4 11.5 6 C6 8 6 8 6 11.5 C6 8 6 8 0.5 6 C6 4 6 4 6 0.5 Z' fill='%2358d4bc' opacity='0.5'/></svg>");
-            background-size: 14px 14px;
-            -webkit-mask-image:
-                radial-gradient(ellipse 70% 55% at 60% 15%, black 0%, rgba(0,0,0,0.4) 50%, transparent 80%);
-                    mask-image:
-                radial-gradient(ellipse 70% 55% at 60% 15%, black 0%, rgba(0,0,0,0.4) 50%, transparent 80%);
-            opacity: 0.45;
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        /* Soft cyan ambient glow under the pill */
+        /* Background ambient glow */
         body::after {
             content: '';
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 700px;
-            height: 200px;
-            transform: translate(-50%, 30%);
-            background: radial-gradient(ellipse 50% 50% at center,
-                rgba(40, 180, 160, 0.18) 0%,
-                rgba(20, 100, 90, 0.08) 40%,
-                transparent 70%);
-            filter: blur(20px);
+            width: 800px;
+            height: 300px;
+            transform: translate(-50%, 20%);
+            background: radial-gradient(ellipse at center,
+                rgba(30, 160, 140, 0.12) 0%,
+                transparent 65%);
+            filter: blur(30px);
+            pointer-events: none;
+        }
+
+        /* Canvas for background sparkle field */
+        #bg-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
             z-index: 0;
         }
@@ -83,116 +65,52 @@
             width: 560px;
             height: 100px;
             border-radius: 999px;
-            background:
-                linear-gradient(180deg,
-                    var(--pill-top) 0%,
-                    var(--pill-mid) 45%,
-                    var(--pill-bottom) 100%);
+            background: linear-gradient(180deg,
+                var(--pill-top)    0%,
+                var(--pill-mid)   45%,
+                var(--pill-bottom) 100%);
             box-shadow:
-                0 30px 60px rgba(0, 0, 0, 0.85),
-                0 10px 25px rgba(0, 0, 0, 0.6),
-                0 0 60px rgba(40, 180, 160, 0.08),
-                inset 0 1px 0 rgba(180, 250, 230, 0.18),
-                inset 0 -8px 18px rgba(0, 0, 0, 0.55);
+                0 28px 55px rgba(0,0,0,0.9),
+                0  8px 20px rgba(0,0,0,0.6),
+                0  0  50px rgba(30,160,140,0.07),
+                inset 0  1px 0 rgba(160,240,210,0.15),
+                inset 0 -6px 16px rgba(0,0,0,0.5);
             overflow: hidden;
             z-index: 1;
         }
 
-        /* BRIGHT SPARKLES — primary layer of Gemini stars on the pill */
-        .sparkles-bright {
+        /* Canvas for the Gemini sparkle ring on the pill */
+        #pill-canvas {
             position: absolute;
             inset: 0;
-            background-image:
-                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M6 0.5 C6 4 6 4 11.5 6 C6 8 6 8 6 11.5 C6 8 6 8 0.5 6 C6 4 6 4 6 0.5 Z' fill='%23baf7e3'/></svg>");
-            background-size: 7px 7px;
-
-            -webkit-mask-image:
-                radial-gradient(ellipse 100% 145% at 50% 50%,
-                    transparent 0%,
-                    transparent 28%,
-                    rgba(0,0,0,0.3) 50%,
-                    rgba(0,0,0,0.85) 80%,
-                    rgba(0,0,0,1) 100%);
-                    mask-image:
-                radial-gradient(ellipse 100% 145% at 50% 50%,
-                    transparent 0%,
-                    transparent 28%,
-                    rgba(0,0,0,0.3) 50%,
-                    rgba(0,0,0,0.85) 80%,
-                    rgba(0,0,0,1) 100%);
+            width: 100%;
+            height: 100%;
             pointer-events: none;
         }
 
-        /* DIM SPARKLES — offset second layer for organic stipple density */
-        .sparkles-dim {
-            position: absolute;
-            inset: 0;
-            background-image:
-                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M6 1.5 C6 4.5 6 4.5 10.5 6 C6 7.5 6 7.5 6 10.5 C6 7.5 6 7.5 1.5 6 C6 4.5 6 4.5 6 1.5 Z' fill='%2370d4bc' opacity='0.7'/></svg>");
-            background-size: 7px 7px;
-            background-position: 3.5px 3.5px;
-
-            -webkit-mask-image:
-                radial-gradient(ellipse 100% 145% at 50% 50%,
-                    transparent 0%,
-                    transparent 28%,
-                    rgba(0,0,0,0.3) 50%,
-                    rgba(0,0,0,0.85) 80%,
-                    rgba(0,0,0,1) 100%);
-                    mask-image:
-                radial-gradient(ellipse 100% 145% at 50% 50%,
-                    transparent 0%,
-                    transparent 28%,
-                    rgba(0,0,0,0.3) 50%,
-                    rgba(0,0,0,0.85) 80%,
-                    rgba(0,0,0,1) 100%);
-            pointer-events: none;
-        }
-
-        /* Top-half brightness boost — sparkles up top read brighter (lit side) */
-        .sparkles-top-boost {
-            position: absolute;
-            inset: 0;
-            background-image:
-                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M6 0.5 C6 4 6 4 11.5 6 C6 8 6 8 6 11.5 C6 8 6 8 0.5 6 C6 4 6 4 6 0.5 Z' fill='%23e0fff5'/></svg>");
-            background-size: 7px 7px;
-
-            -webkit-mask-image:
-                linear-gradient(180deg,
-                    rgba(0,0,0,0.9) 0%,
-                    rgba(0,0,0,0.4) 35%,
-                    transparent 60%);
-                    mask-image:
-                linear-gradient(180deg,
-                    rgba(0,0,0,0.9) 0%,
-                    rgba(0,0,0,0.4) 35%,
-                    transparent 60%);
-            mix-blend-mode: screen;
-            opacity: 0.6;
-            pointer-events: none;
-        }
-
-        /* Inner cyan rim glow */
+        /* Inner rim glow */
         .pill-rim {
             position: absolute;
             inset: 0;
             border-radius: 999px;
             box-shadow:
-                inset 0 0 28px rgba(70, 220, 200, 0.18),
-                inset 0 0 70px rgba(40, 160, 145, 0.10);
+                inset 0 0 24px rgba(60,210,185,0.20),
+                inset 0 0 60px rgba(35,150,135,0.10);
             pointer-events: none;
+            z-index: 2;
         }
 
-        /* Glassy top reflection */
+        /* Subtle top gloss */
         .pill-gloss {
             position: absolute;
-            top: 0; left: 5%; right: 5%;
-            height: 35%;
+            top: 0; left: 4%; right: 4%;
+            height: 38%;
+            border-radius: 999px 999px 60% 60%;
             background: linear-gradient(180deg,
-                rgba(255, 255, 255, 0.04) 0%,
-                rgba(255, 255, 255, 0.01) 60%,
+                rgba(255,255,255,0.045) 0%,
                 transparent 100%);
             pointer-events: none;
+            z-index: 2;
         }
 
         .pill-content {
@@ -205,21 +123,16 @@
             z-index: 10;
         }
 
-        .left-group { display: flex; align-items: center; gap: 26px; }
+        .left-group  { display: flex; align-items: center; gap: 26px; }
+        .right-group { display: flex; align-items: center; gap: 20px; }
 
         .icon-btn {
-            background: none;
-            border: none;
-            padding: 0;
-            cursor: pointer;
-            color: var(--icon-color);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            outline: none;
-            transition: opacity 0.2s ease;
+            background: none; border: none; padding: 0;
+            cursor: pointer; color: var(--icon-color);
+            display: flex; align-items: center; justify-content: center;
+            outline: none; transition: opacity 0.2s ease;
         }
-        .icon-btn:hover { opacity: 0.75; }
+        .icon-btn:hover { opacity: 0.72; }
 
         .icon-plus svg { width: 30px; height: 30px; }
 
@@ -229,29 +142,23 @@
             color: var(--text-color);
             letter-spacing: 0.2px;
             user-select: none;
-            text-shadow: 0 0 18px rgba(150, 240, 220, 0.15);
+            text-shadow: 0 0 20px rgba(140,230,210,0.18);
         }
 
-        .right-group { display: flex; align-items: center; gap: 20px; }
-
+        /* ── MIC ── */
         .mic-wrapper {
             position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 60px;
-            height: 60px;
+            display: flex; align-items: center; justify-content: center;
+            width: 60px; height: 60px;
         }
 
         .mic-halo {
             position: absolute;
-            width: 110px;
-            height: 110px;
+            width: 115px; height: 115px;
             background: radial-gradient(circle,
-                rgba(150, 245, 225, 0.35) 0%,
-                rgba(70, 210, 190, 0.15) 30%,
-                rgba(30, 130, 115, 0.05) 55%,
-                transparent 70%);
+                rgba(145,245,220,0.38) 0%,
+                rgba(65,205,185,0.14) 32%,
+                transparent 65%);
             border-radius: 50%;
             filter: blur(10px);
             pointer-events: none;
@@ -259,13 +166,12 @@
 
         .mic-glow {
             position: absolute;
-            width: 64px;
-            height: 64px;
+            width: 66px; height: 66px;
             background: radial-gradient(circle,
-                var(--glow-core) 0%,
-                var(--glow-mid) 38%,
-                var(--glow-deep) 68%,
-                transparent 85%);
+                var(--glow-core)  0%,
+                var(--glow-mid)  36%,
+                var(--glow-deep) 66%,
+                transparent 84%);
             border-radius: 50%;
             filter: blur(1.5px);
             pointer-events: none;
@@ -273,21 +179,19 @@
 
         .mic-core {
             position: absolute;
-            width: 44px;
-            height: 44px;
+            width: 42px; height: 42px;
             background: radial-gradient(circle,
-                rgba(220, 255, 245, 0.55) 0%,
-                rgba(120, 240, 220, 0.3) 50%,
-                transparent 80%);
+                rgba(215,255,245,0.60) 0%,
+                rgba(110,235,215,0.28) 52%,
+                transparent 78%);
             border-radius: 50%;
             pointer-events: none;
         }
 
-        .icon-mic { position: relative; z-index: 2; color: #ffffff; }
+        .icon-mic { position: relative; z-index: 2; color: #fff; }
         .icon-mic svg {
-            width: 26px;
-            height: 26px;
-            filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
+            width: 26px; height: 26px;
+            filter: drop-shadow(0 0 5px rgba(255,255,255,0.55));
         }
 
         .icon-bars svg { width: 22px; height: 22px; }
@@ -295,54 +199,208 @@
 </head>
 <body>
 
-    <div class="pill-wrapper">
-        <!-- Gemini sparkle ring around perimeter -->
-        <div class="sparkles-bright"></div>
-        <div class="sparkles-dim"></div>
-        <div class="sparkles-top-boost"></div>
+<!-- Background ambient sparkle canvas -->
+<canvas id="bg-canvas"></canvas>
 
-        <!-- Inner cyan rim glow -->
-        <div class="pill-rim"></div>
-        <!-- Top glass reflection -->
-        <div class="pill-gloss"></div>
+<div class="pill-wrapper">
+    <!-- Pill sparkle ring canvas -->
+    <canvas id="pill-canvas"></canvas>
 
-        <!-- UI -->
-        <div class="pill-content">
+    <div class="pill-rim"></div>
+    <div class="pill-gloss"></div>
 
-            <div class="left-group">
-                <button class="icon-btn icon-plus" aria-label="Add">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
-                        <path d="M12 4v16M4 12h16" />
-                    </svg>
-                </button>
-                <div class="text-ask">Ask Gemini</div>
-            </div>
+    <div class="pill-content">
+        <div class="left-group">
+            <button class="icon-btn icon-plus" aria-label="Add">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+                    <path d="M12 4v16M4 12h16"/>
+                </svg>
+            </button>
+            <div class="text-ask">Ask Gemini</div>
+        </div>
 
-            <div class="right-group">
-                <div class="mic-wrapper">
-                    <div class="mic-halo"></div>
-                    <div class="mic-glow"></div>
-                    <div class="mic-core"></div>
-                    <button class="icon-btn icon-mic" aria-label="Voice Input">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="9" y="3" width="6" height="11" rx="3" />
-                            <path d="M5 11v1a7 7 0 0 0 14 0v-1" />
-                            <path d="M12 19v3" />
-                        </svg>
-                    </button>
-                </div>
-
-                <button class="icon-btn icon-bars" aria-label="Audio Wave Options">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-                        <path d="M7 10v4" />
-                        <path d="M12 6v12" />
-                        <path d="M17 10v4" />
+        <div class="right-group">
+            <div class="mic-wrapper">
+                <div class="mic-halo"></div>
+                <div class="mic-glow"></div>
+                <div class="mic-core"></div>
+                <button class="icon-btn icon-mic" aria-label="Voice Input">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="3" width="6" height="11" rx="3"/>
+                        <path d="M5 11v1a7 7 0 0 0 14 0v-1"/>
+                        <path d="M12 19v3"/>
                     </svg>
                 </button>
             </div>
 
+            <button class="icon-btn icon-bars" aria-label="Audio Wave">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                    <path d="M7 10v4"/>
+                    <path d="M12 6v12"/>
+                    <path d="M17 10v4"/>
+                </svg>
+            </button>
         </div>
     </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  Draws a single Gemini 4-pointed sparkle star
+//  centred at (cx, cy) with a given half-size.
+//  The Gemini star has 4 elongated points and
+//  deeply concave sides — achieved with cubic
+//  Bezier curves where the control points pull
+//  the path almost all the way to the centre.
+// ─────────────────────────────────────────────
+function drawSparkle(ctx, cx, cy, size) {
+    const r  = size;          // tip distance from centre
+    const cp = size * 0.08;   // control-point pull (very small = very concave)
+
+    ctx.beginPath();
+    // Top point
+    ctx.moveTo(cx, cy - r);
+    // → Right point  (concave between top & right)
+    ctx.bezierCurveTo(cx + cp, cy - cp,   cx + cp, cy - cp,   cx + r, cy);
+    // → Bottom point
+    ctx.bezierCurveTo(cx + cp, cy + cp,   cx + cp, cy + cp,   cx, cy + r);
+    // → Left point
+    ctx.bezierCurveTo(cx - cp, cy + cp,   cx - cp, cy + cp,   cx - r, cy);
+    // → Back to top
+    ctx.bezierCurveTo(cx - cp, cy - cp,   cx - cp, cy - cp,   cx, cy - r);
+    ctx.closePath();
+    ctx.fill();
+}
+
+// ─────────────────────────────────────────────
+//  PILL SPARKLE RING
+//  Tiles sparkles across the pill canvas, then
+//  masks opacity based on distance from the
+//  pill's centre — full opacity at the edge,
+//  zero in the middle — creating the ring effect.
+//  Also dims sparkles on the lower half (shadow side).
+// ─────────────────────────────────────────────
+function drawPillSparkles() {
+    const pill   = document.querySelector('.pill-wrapper');
+    const canvas = document.getElementById('pill-canvas');
+    const W = pill.offsetWidth;
+    const H = pill.offsetHeight;
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width  = W + 'px';
+    canvas.style.height = H + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    // Pill geometry for the elliptical mask
+    const cx = W / 2;
+    const cy = H / 2;
+    // Semi-axes: shrunk slightly so the ellipse sits just inside the pill border
+    const rx = W / 2 - 2;
+    const ry = H / 2 - 2;
+
+    const GRID  = 7;   // px between sparkle centres
+    const SIZE  = 2.2; // sparkle tip-to-centre distance (px) — crisp at 2× dpr
+
+    for (let y = 0; y < H; y += GRID) {
+        for (let x = 0; x < W; x += GRID) {
+            // Alternate rows offset for honeycomb packing
+            const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
+            const px = x + ox;
+            const py = y;
+
+            // Distance from this sparkle to the pill centre, normalised to ellipse
+            const dx = (px - cx) / rx;
+            const dy = (py - cy) / ry;
+            const d  = Math.sqrt(dx * dx + dy * dy); // 0 = centre, 1 = pill edge
+
+            // Only render sparkles in the outer ring (d > 0.45)
+            // Fade in from d=0.45 to fully opaque at d=0.85+
+            if (d < 0.42) continue;
+
+            // Ring opacity: ramps from 0 at d=0.42 to 1 at d=0.85
+            const ringAlpha = Math.min(1, (d - 0.42) / 0.43);
+
+            // Vertical dimming: top half brighter, bottom half dimmer
+            const vertFactor = 0.45 + 0.55 * (1 - (py / H)); // 1 at top, 0.45 at bottom
+
+            // Colour: interpolate between bright cyan-white (top) and dim teal (bottom)
+            const topColor    = { r: 185, g: 250, b: 230 };
+            const bottomColor = { r: 80,  g: 190, b: 168 };
+            const t = py / H;
+            const r = Math.round(topColor.r + (bottomColor.r - topColor.r) * t);
+            const g = Math.round(topColor.g + (bottomColor.g - topColor.g) * t);
+            const b = Math.round(topColor.b + (bottomColor.b - topColor.b) * t);
+
+            const alpha = ringAlpha * vertFactor;
+
+            ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+            drawSparkle(ctx, px, py, SIZE);
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
+//  BACKGROUND SPARKLE FIELD
+//  Faint Gemini stars scattered across the page
+//  background, concentrated in the upper area
+//  (matching the screenshot's ambient field).
+// ─────────────────────────────────────────────
+function drawBgSparkles() {
+    const canvas = document.getElementById('bg-canvas');
+    const dpr = window.devicePixelRatio || 1;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width  = W + 'px';
+    canvas.style.height = H + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const GRID = 18;
+    const SIZE = 1.6;
+
+    // Focus on upper-centre of viewport (where screenshot shows them)
+    const focusX = W * 0.58;
+    const focusY = H * 0.15;
+    const spread = Math.min(W, H) * 0.38;
+
+    for (let y = 0; y < H * 0.55; y += GRID) {
+        for (let x = 0; x < W; x += GRID) {
+            const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
+            const px = x + ox;
+            const py = y;
+
+            const distFromFocus = Math.sqrt(
+                Math.pow(px - focusX, 2) + Math.pow(py - focusY, 2)
+            );
+            const alpha = Math.max(0, 1 - distFromFocus / spread) * 0.35;
+            if (alpha < 0.02) continue;
+
+            ctx.fillStyle = `rgba(88, 212, 188, ${alpha})`;
+            drawSparkle(ctx, px, py, SIZE);
+        }
+    }
+}
+
+// Draw both on load
+window.addEventListener('load', () => {
+    drawPillSparkles();
+    drawBgSparkles();
+});
+
+// Redraw on resize
+window.addEventListener('resize', () => {
+    drawPillSparkles();
+    drawBgSparkles();
+});
+</script>
 
 </body>
 </html>
