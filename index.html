@@ -10,14 +10,9 @@
         :root {
             --bg-page: #02080a;
 
-            /* Pill body: vertical gradient gives 3D curvature (lit from above) */
             --pill-top:    #1a3a36;
             --pill-mid:    #0e2724;
             --pill-bottom: #04100e;
-
-            --dot-bright: rgba(170, 250, 230, 1);
-            --dot-mid:    rgba(110, 220, 200, 0.85);
-            --dot-dim:    rgba(70, 180, 160, 0.5);
 
             --text-color: #f0faf8;
             --icon-color: #f4fbf9;
@@ -40,19 +35,27 @@
             overflow: hidden;
         }
 
-        /* Background halftone field - fills upper area like in screenshot */
+        /*
+           GEMINI SPARKLE — 4-pointed concave star (the Gemini "spark" mark).
+           Tiled as an SVG data URI background-image to create the perimeter starfield.
+           The path uses Bezier curves to pinch the sides inward, giving the
+           recognizable 4-point flare shape (top/right/bottom/left points,
+           concave between them).
+        */
+
+        /* Ambient background sparkle field (faint, behind the pill) */
         body::before {
             content: '';
             position: absolute;
             inset: 0;
             background-image:
-                radial-gradient(circle, rgba(80, 200, 180, 0.25) 0.8px, transparent 1.4px);
-            background-size: 5.5px 5.5px;
+                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M6 0.5 C6 4 6 4 11.5 6 C6 8 6 8 6 11.5 C6 8 6 8 0.5 6 C6 4 6 4 6 0.5 Z' fill='%2358d4bc' opacity='0.5'/></svg>");
+            background-size: 14px 14px;
             -webkit-mask-image:
                 radial-gradient(ellipse 70% 55% at 60% 15%, black 0%, rgba(0,0,0,0.4) 50%, transparent 80%);
                     mask-image:
                 radial-gradient(ellipse 70% 55% at 60% 15%, black 0%, rgba(0,0,0,0.4) 50%, transparent 80%);
-            opacity: 0.55;
+            opacity: 0.45;
             pointer-events: none;
             z-index: 0;
         }
@@ -80,91 +83,96 @@
             width: 560px;
             height: 100px;
             border-radius: 999px;
-            /* Vertical curvature — lighter top, darker bottom = lit from above */
             background:
                 linear-gradient(180deg,
                     var(--pill-top) 0%,
                     var(--pill-mid) 45%,
                     var(--pill-bottom) 100%);
             box-shadow:
-                /* Drop shadow */
                 0 30px 60px rgba(0, 0, 0, 0.85),
                 0 10px 25px rgba(0, 0, 0, 0.6),
-                /* Outer cyan ambient (tiny) */
                 0 0 60px rgba(40, 180, 160, 0.08),
-                /* Top highlight rim */
                 inset 0 1px 0 rgba(180, 250, 230, 0.18),
-                /* Bottom inner shadow for depth */
                 inset 0 -8px 18px rgba(0, 0, 0, 0.55);
             overflow: hidden;
             z-index: 1;
         }
 
-        /*
-           HALFTONE — denser/brighter at top edge, fading down and inward.
-           Two layers offset for organic stipple density.
-           Mask: radial from center (transparent) → opaque at edges,
-                 PLUS a vertical fade making top brighter than bottom.
-        */
-        .pill-texture {
+        /* BRIGHT SPARKLES — primary layer of Gemini stars on the pill */
+        .sparkles-bright {
             position: absolute;
             inset: 0;
             background-image:
-                radial-gradient(circle at center, var(--dot-bright) 1.2px, transparent 1.7px),
-                radial-gradient(circle at center, var(--dot-mid) 0.9px, transparent 1.4px),
-                radial-gradient(circle at center, var(--dot-dim) 0.6px, transparent 1.1px);
-            background-size: 4.5px 4.5px, 4.5px 4.5px, 4.5px 4.5px;
-            background-position: 0 0, 2.25px 2.25px, 1.1px 3.3px;
+                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M6 0.5 C6 4 6 4 11.5 6 C6 8 6 8 6 11.5 C6 8 6 8 0.5 6 C6 4 6 4 6 0.5 Z' fill='%23baf7e3'/></svg>");
+            background-size: 7px 7px;
 
-            /* Edge ring mask */
             -webkit-mask-image:
                 radial-gradient(ellipse 100% 145% at 50% 50%,
                     transparent 0%,
                     transparent 28%,
-                    rgba(0,0,0,0.25) 48%,
-                    rgba(0,0,0,0.7) 75%,
-                    rgba(0,0,0,1) 95%);
+                    rgba(0,0,0,0.3) 50%,
+                    rgba(0,0,0,0.85) 80%,
+                    rgba(0,0,0,1) 100%);
                     mask-image:
                 radial-gradient(ellipse 100% 145% at 50% 50%,
                     transparent 0%,
                     transparent 28%,
-                    rgba(0,0,0,0.25) 48%,
-                    rgba(0,0,0,0.7) 75%,
-                    rgba(0,0,0,1) 95%);
-        }
-
-        /* Second pass: brightens the top half of the dot ring (the lit side) */
-        .pill-texture-top {
-            position: absolute;
-            inset: 0;
-            background-image:
-                radial-gradient(circle at center, rgba(190, 255, 240, 0.9) 1px, transparent 1.6px);
-            background-size: 4.5px 4.5px;
-            background-position: 0 0;
-
-            -webkit-mask-image:
-                linear-gradient(180deg,
-                    rgba(0,0,0,1) 0%,
-                    rgba(0,0,0,0.6) 35%,
-                    transparent 65%),
-                radial-gradient(ellipse 100% 130% at 50% 50%,
-                    transparent 35%,
-                    rgba(0,0,0,1) 90%);
-            -webkit-mask-composite: source-in;
-                    mask-image:
-                linear-gradient(180deg,
-                    rgba(0,0,0,1) 0%,
-                    rgba(0,0,0,0.6) 35%,
-                    transparent 65%),
-                radial-gradient(ellipse 100% 130% at 50% 50%,
-                    transparent 35%,
-                    rgba(0,0,0,1) 90%);
-                    mask-composite: intersect;
-            mix-blend-mode: screen;
+                    rgba(0,0,0,0.3) 50%,
+                    rgba(0,0,0,0.85) 80%,
+                    rgba(0,0,0,1) 100%);
             pointer-events: none;
         }
 
-        /* Inner cyan rim glow — soft turquoise halo just inside the edge */
+        /* DIM SPARKLES — offset second layer for organic stipple density */
+        .sparkles-dim {
+            position: absolute;
+            inset: 0;
+            background-image:
+                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M6 1.5 C6 4.5 6 4.5 10.5 6 C6 7.5 6 7.5 6 10.5 C6 7.5 6 7.5 1.5 6 C6 4.5 6 4.5 6 1.5 Z' fill='%2370d4bc' opacity='0.7'/></svg>");
+            background-size: 7px 7px;
+            background-position: 3.5px 3.5px;
+
+            -webkit-mask-image:
+                radial-gradient(ellipse 100% 145% at 50% 50%,
+                    transparent 0%,
+                    transparent 28%,
+                    rgba(0,0,0,0.3) 50%,
+                    rgba(0,0,0,0.85) 80%,
+                    rgba(0,0,0,1) 100%);
+                    mask-image:
+                radial-gradient(ellipse 100% 145% at 50% 50%,
+                    transparent 0%,
+                    transparent 28%,
+                    rgba(0,0,0,0.3) 50%,
+                    rgba(0,0,0,0.85) 80%,
+                    rgba(0,0,0,1) 100%);
+            pointer-events: none;
+        }
+
+        /* Top-half brightness boost — sparkles up top read brighter (lit side) */
+        .sparkles-top-boost {
+            position: absolute;
+            inset: 0;
+            background-image:
+                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M6 0.5 C6 4 6 4 11.5 6 C6 8 6 8 6 11.5 C6 8 6 8 0.5 6 C6 4 6 4 6 0.5 Z' fill='%23e0fff5'/></svg>");
+            background-size: 7px 7px;
+
+            -webkit-mask-image:
+                linear-gradient(180deg,
+                    rgba(0,0,0,0.9) 0%,
+                    rgba(0,0,0,0.4) 35%,
+                    transparent 60%);
+                    mask-image:
+                linear-gradient(180deg,
+                    rgba(0,0,0,0.9) 0%,
+                    rgba(0,0,0,0.4) 35%,
+                    transparent 60%);
+            mix-blend-mode: screen;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        /* Inner cyan rim glow */
         .pill-rim {
             position: absolute;
             inset: 0;
@@ -175,12 +183,11 @@
             pointer-events: none;
         }
 
-        /* Subtle glassy top reflection */
+        /* Glassy top reflection */
         .pill-gloss {
             position: absolute;
             top: 0; left: 5%; right: 5%;
             height: 35%;
-            border-radius: 999px 999px 50% 50% / 100% 100% 100% 100%;
             background: linear-gradient(180deg,
                 rgba(255, 255, 255, 0.04) 0%,
                 rgba(255, 255, 255, 0.01) 60%,
@@ -198,11 +205,7 @@
             z-index: 10;
         }
 
-        .left-group {
-            display: flex;
-            align-items: center;
-            gap: 26px;
-        }
+        .left-group { display: flex; align-items: center; gap: 26px; }
 
         .icon-btn {
             background: none;
@@ -229,11 +232,7 @@
             text-shadow: 0 0 18px rgba(150, 240, 220, 0.15);
         }
 
-        .right-group {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
+        .right-group { display: flex; align-items: center; gap: 20px; }
 
         .mic-wrapper {
             position: relative;
@@ -244,7 +243,6 @@
             height: 60px;
         }
 
-        /* Outermost soft bloom */
         .mic-halo {
             position: absolute;
             width: 110px;
@@ -259,7 +257,6 @@
             pointer-events: none;
         }
 
-        /* Mid orb */
         .mic-glow {
             position: absolute;
             width: 64px;
@@ -274,7 +271,6 @@
             pointer-events: none;
         }
 
-        /* Sharp inner core for that "lit" look */
         .mic-core {
             position: absolute;
             width: 44px;
@@ -300,10 +296,11 @@
 <body>
 
     <div class="pill-wrapper">
-        <!-- Halftone ring around perimeter -->
-        <div class="pill-texture"></div>
-        <!-- Brighter top dots (lit side) -->
-        <div class="pill-texture-top"></div>
+        <!-- Gemini sparkle ring around perimeter -->
+        <div class="sparkles-bright"></div>
+        <div class="sparkles-dim"></div>
+        <div class="sparkles-top-boost"></div>
+
         <!-- Inner cyan rim glow -->
         <div class="pill-rim"></div>
         <!-- Top glass reflection -->
