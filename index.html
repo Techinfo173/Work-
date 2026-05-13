@@ -318,50 +318,66 @@ function drawPillSparkles() {
     const GRID = 3.5;  // Tight grid
     const SIZE = 1.4;  // Small stars
 
-    for (let y = 0; y < H; y += GRID) {
-        for (let x = 0; x < W; x += GRID) {
-            const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
-            const px = x + ox;
-            const py = y;
+    // We'll draw in multiple passes grouped by blur level
+    // so we can batch filter changes (expensive to switch per-sparkle).
+    // Pass 0: sharp (outer edge), Pass 1: slight blur, Pass 2: heavy blur (inner edge dissolve)
+    const passes = [
+        { minD: 0.72, maxD: 1.2, blur: 0 },      // Outer: crisp
+        { minD: 0.58, maxD: 0.72, blur: 0.6 },    // Mid-ring: slightly soft
+        { minD: 0.42, maxD: 0.58, blur: 1.4 },    // Inner edge: blurred/dissolved
+    ];
 
-            // Elliptical distance from centre
-            const dx = (px - cx) / rx;
-            const dy = (py - cy) / ry;
-            const d  = Math.sqrt(dx * dx + dy * dy);
-
-            // Keep centre clean
-            if (d < 0.50) continue;
-
-            // Base ring alpha
-            const ringAlpha = Math.min(1, (d - 0.50) / 0.35);
-
-            // Wave modulation — creates the flowing pattern
-            const wave = waveNoise(px, py, W, H);
-
-            // Map wave to opacity: some bands go bright, others go dim/invisible
-            // Use a curve so we get crisp "on" bands and softer "off" areas
-            const waveFactor = Math.pow(wave, 0.7); // Slightly boost mids
-
-            // Combine: ring mask × wave pattern × vertical lighting
-            const vertFactor = 0.40 + 0.60 * (1 - (py / H));
-
-            // Colour gradient: top = bright cyan-white, bottom = dim teal
-            const topColor    = { r: 190, g: 252, b: 235 };
-            const bottomColor = { r: 70,  g: 185, b: 162 };
-            const t = py / H;
-            const r = Math.round(topColor.r + (bottomColor.r - topColor.r) * t);
-            const g = Math.round(topColor.g + (bottomColor.g - topColor.g) * t);
-            const b = Math.round(topColor.b + (bottomColor.b - topColor.b) * t);
-
-            const alpha = ringAlpha * waveFactor * vertFactor;
-            if (alpha < 0.03) continue; // Skip invisible sparkles for perf
-
-            // Vary size slightly with wave for extra organic feel
-            const sizeVar = SIZE * (0.8 + waveFactor * 0.4);
-
-            ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-            drawSparkle(ctx, px, py, sizeVar);
+    for (const pass of passes) {
+        ctx.save();
+        if (pass.blur > 0) {
+            ctx.filter = `blur(${pass.blur}px)`;
         }
+
+        for (let y = 0; y < H; y += GRID) {
+            for (let x = 0; x < W; x += GRID) {
+                const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
+                const px = x + ox;
+                const py = y;
+
+                // Elliptical distance from centre
+                const dx = (px - cx) / rx;
+                const dy = (py - cy) / ry;
+                const d  = Math.sqrt(dx * dx + dy * dy);
+
+                // Only draw sparkles in this pass's distance band
+                if (d < pass.minD || d >= pass.maxD) continue;
+
+                // Ring alpha: fades from 0 at innermost to 1 at outermost
+                const ringAlpha = Math.min(1, (d - 0.42) / 0.45);
+
+                // Wave modulation — creates the flowing pattern
+                const wave = waveNoise(px, py, W, H);
+                const waveFactor = Math.pow(wave, 0.7);
+
+                // Vertical lighting
+                const vertFactor = 0.40 + 0.60 * (1 - (py / H));
+
+                // Colour gradient: top = bright cyan-white, bottom = dim teal
+                const topColor    = { r: 190, g: 252, b: 235 };
+                const bottomColor = { r: 70,  g: 185, b: 162 };
+                const t = py / H;
+                const r = Math.round(topColor.r + (bottomColor.r - topColor.r) * t);
+                const g = Math.round(topColor.g + (bottomColor.g - topColor.g) * t);
+                const b = Math.round(topColor.b + (bottomColor.b - topColor.b) * t);
+
+                const alpha = ringAlpha * waveFactor * vertFactor;
+                if (alpha < 0.03) continue;
+
+                // Vary size — inner blurred sparkles are slightly larger (bloom effect)
+                const bloomScale = pass.blur > 0 ? 1.0 + pass.blur * 0.3 : 1.0;
+                const sizeVar = SIZE * (0.8 + waveFactor * 0.4) * bloomScale;
+
+                ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+                drawSparkle(ctx, px, py, sizeVar);
+            }
+        }
+
+        ctx.restore();
     }
 }
 
