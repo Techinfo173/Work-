@@ -8,19 +8,22 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400&display=swap');
 
         :root {
-            --bg-page: #010404;
-            --pill-base: #051210;
+            --bg-page: #02080a;
 
-            /* Halftone dot colors (visible, not sub-pixel) */
-            --dot-color: rgba(120, 230, 215, 0.85);
+            /* Pill body teal */
+            --pill-edge: #0a1f1c;
+            --pill-mid:  #102e2a;
 
-            --text-color: #e2eeec;
-            --icon-color: #ebf5f3;
+            --dot-color: rgba(140, 240, 220, 0.95);
+            --dot-color-dim: rgba(90, 200, 180, 0.55);
 
-            /* Mic glow - punchier, more saturated */
-            --glow-center: #9ff7e6;
-            --glow-mid: #3dd4bd;
-            --glow-deep: #178877;
+            --text-color: #e8f3f1;
+            --icon-color: #f0f8f6;
+
+            /* Mic */
+            --glow-core: #b8f7e9;
+            --glow-mid:  #3ddcc4;
+            --glow-deep: #14a890;
         }
 
         body {
@@ -30,68 +33,83 @@
             align-items: center;
             justify-content: center;
             background: var(--bg-page);
-            background-image:
-                radial-gradient(ellipse 70% 60% at 45% 35%, rgba(20, 60, 55, 0.18), transparent 70%),
-                radial-gradient(circle at 75% 85%, rgba(8, 30, 25, 0.12), transparent 60%);
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             -webkit-font-smoothing: antialiased;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Background halftone wash (visible in screenshot's upper area) */
+        body::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: radial-gradient(circle, rgba(80, 200, 180, 0.18) 0.7px, transparent 1.2px);
+            background-size: 5px 5px;
+            -webkit-mask-image: radial-gradient(ellipse 60% 50% at 55% 20%, black 0%, transparent 70%);
+                    mask-image: radial-gradient(ellipse 60% 50% at 55% 20%, black 0%, transparent 70%);
+            opacity: 0.55;
+            pointer-events: none;
         }
 
         .pill-wrapper {
             position: relative;
-            width: 520px;
-            height: 92px;
+            width: 540px;
+            height: 96px;
             border-radius: 999px;
-            background-color: var(--pill-base);
-            /* Subtle outer rim highlight + drop shadow */
+            /* Pill body: slightly lighter in the middle so it feels 3D */
+            background:
+                radial-gradient(ellipse 70% 130% at 50% 50%,
+                    var(--pill-mid) 0%,
+                    var(--pill-edge) 75%);
             box-shadow:
-                0 20px 50px rgba(0, 0, 0, 0.75),
-                0 0 0 1px rgba(80, 200, 180, 0.08),
-                inset 0 0 0 1px rgba(120, 230, 215, 0.06);
+                0 25px 60px rgba(0, 0, 0, 0.8),
+                0 0 0 1px rgba(120, 230, 215, 0.04),
+                inset 0 1px 0 rgba(160, 240, 220, 0.05);
             overflow: hidden;
         }
 
         /*
-           HALFTONE LAYER
-           - Real visible dots: 1.1px on a 4px grid
-           - Two offset layers create a tighter, more organic stipple
-           - Mask gradient fades the dots themselves (not a core overlay)
-             from dense in the upper-left to invisible toward center/right.
+           HALFTONE RING — the key visual.
+           Dots cover the whole pill, but a mask makes them appear ONLY
+           in a band around the perimeter, fading inward toward the center.
         */
         .pill-texture {
             position: absolute;
             inset: 0;
             background-image:
                 radial-gradient(circle at center, var(--dot-color) 1.1px, transparent 1.6px),
-                radial-gradient(circle at center, rgba(120, 230, 215, 0.55) 0.8px, transparent 1.3px);
-            background-size: 4px 4px, 4px 4px;
-            background-position: 0 0, 2px 2px;
+                radial-gradient(circle at center, var(--dot-color-dim) 0.7px, transparent 1.2px);
+            background-size: 4.5px 4.5px, 4.5px 4.5px;
+            background-position: 0 0, 2.25px 2.25px;
 
-            /* Radial fade from upper-left so density drops in BOTH x and y */
+            /* Inverse radial mask: opaque at edges, transparent at center.
+               Ellipse sized to match the pill's wide aspect ratio so the
+               band hugs all four sides + the curved ends evenly. */
             -webkit-mask-image:
-                radial-gradient(ellipse 75% 110% at 0% 30%,
-                    rgba(0, 0, 0, 1) 0%,
-                    rgba(0, 0, 0, 0.95) 18%,
-                    rgba(0, 0, 0, 0.55) 40%,
-                    rgba(0, 0, 0, 0.18) 60%,
-                    rgba(0, 0, 0, 0) 78%);
-            mask-image:
-                radial-gradient(ellipse 75% 110% at 0% 30%,
-                    rgba(0, 0, 0, 1) 0%,
-                    rgba(0, 0, 0, 0.95) 18%,
-                    rgba(0, 0, 0, 0.55) 40%,
-                    rgba(0, 0, 0, 0.18) 60%,
-                    rgba(0, 0, 0, 0) 78%);
+                radial-gradient(ellipse 95% 140% at 50% 50%,
+                    transparent 0%,
+                    transparent 30%,
+                    rgba(0, 0, 0, 0.35) 55%,
+                    rgba(0, 0, 0, 0.85) 85%,
+                    rgba(0, 0, 0, 1) 100%);
+                    mask-image:
+                radial-gradient(ellipse 95% 140% at 50% 50%,
+                    transparent 0%,
+                    transparent 30%,
+                    rgba(0, 0, 0, 0.35) 55%,
+                    rgba(0, 0, 0, 0.85) 85%,
+                    rgba(0, 0, 0, 1) 100%);
         }
 
-        /* Faint teal wash that brightens the upper-left where dots are densest */
-        .pill-glow-tl {
+        /* Inner teal rim glow — the soft cyan halo just inside the pill edge */
+        .pill-rim {
             position: absolute;
             inset: 0;
-            background: radial-gradient(ellipse 55% 90% at 8% 30%,
-                rgba(60, 200, 180, 0.18) 0%,
-                rgba(40, 150, 135, 0.08) 35%,
-                transparent 70%);
+            border-radius: 999px;
+            box-shadow:
+                inset 0 0 22px rgba(60, 200, 180, 0.20),
+                inset 0 0 60px rgba(40, 160, 140, 0.10);
             pointer-events: none;
         }
 
@@ -101,14 +119,14 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 26px 0 28px;
+            padding: 0 28px 0 30px;
             z-index: 10;
         }
 
         .left-group {
             display: flex;
             align-items: center;
-            gap: 22px;
+            gap: 24px;
         }
 
         .icon-btn {
@@ -123,13 +141,12 @@
             outline: none;
             transition: opacity 0.2s ease;
         }
-
         .icon-btn:hover { opacity: 0.75; }
 
-        .icon-plus svg { width: 26px; height: 26px; }
+        .icon-plus svg { width: 28px; height: 28px; }
 
         .text-ask {
-            font-size: 26px;
+            font-size: 28px;
             font-weight: 300;
             color: var(--text-color);
             letter-spacing: 0.3px;
@@ -147,54 +164,53 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 54px;
-            height: 54px;
+            width: 56px;
+            height: 56px;
         }
 
-        /* Punchier mic glow: saturated cyan with tighter falloff */
-        .mic-glow {
+        /* Outer halo — soft cyan bloom */
+        .mic-halo {
             position: absolute;
-            width: 62px;
-            height: 62px;
+            width: 96px;
+            height: 96px;
             background: radial-gradient(circle,
-                var(--glow-center) 0%,
-                var(--glow-mid) 30%,
-                var(--glow-deep) 58%,
-                transparent 78%);
+                rgba(140, 240, 220, 0.30) 0%,
+                rgba(60, 200, 180, 0.12) 35%,
+                transparent 65%);
             border-radius: 50%;
-            filter: blur(2.5px);
-            opacity: 1;
+            filter: blur(8px);
             pointer-events: none;
         }
 
-        /* Outer halo bloom around the mic */
-        .mic-halo {
+        /* Inner glow orb — bright, saturated, tight falloff */
+        .mic-glow {
             position: absolute;
-            width: 90px;
-            height: 90px;
+            width: 60px;
+            height: 60px;
             background: radial-gradient(circle,
-                rgba(125, 240, 220, 0.25) 0%,
-                rgba(60, 200, 180, 0.10) 35%,
-                transparent 65%);
+                var(--glow-core) 0%,
+                var(--glow-mid) 35%,
+                var(--glow-deep) 65%,
+                transparent 82%);
             border-radius: 50%;
-            filter: blur(6px);
+            filter: blur(1.5px);
             pointer-events: none;
         }
 
         .icon-mic { position: relative; z-index: 2; color: #ffffff; }
         .icon-mic svg { width: 26px; height: 26px; }
 
-        .icon-bars svg { width: 24px; height: 24px; }
+        .icon-bars svg { width: 22px; height: 22px; }
     </style>
 </head>
 <body>
 
     <div class="pill-wrapper">
-        <!-- Halftone dots -->
+        <!-- Halftone ring around perimeter -->
         <div class="pill-texture"></div>
 
-        <!-- Soft teal wash in the upper-left -->
-        <div class="pill-glow-tl"></div>
+        <!-- Inner cyan rim glow -->
+        <div class="pill-rim"></div>
 
         <!-- UI -->
         <div class="pill-content">
@@ -213,7 +229,7 @@
                     <div class="mic-halo"></div>
                     <div class="mic-glow"></div>
                     <button class="icon-btn icon-mic" aria-label="Voice Input">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="9" y="3" width="6" height="11" rx="3" />
                             <path d="M5 11v1a7 7 0 0 0 14 0v-1" />
                             <path d="M12 19v3" />
@@ -221,7 +237,6 @@
                     </button>
                 </div>
 
-                <!-- Bars: short / tall / short  (audio EQ look) -->
                 <button class="icon-btn icon-bars" aria-label="Audio Wave Options">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
                         <path d="M7 10v4" />
