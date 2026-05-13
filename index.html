@@ -246,39 +246,54 @@
 
 <script>
 // ─────────────────────────────────────────────
-//  Draws a single Gemini 4-pointed sparkle star
-//  centred at (cx, cy) with a given half-size.
-//  The Gemini star has 4 elongated points and
-//  deeply concave sides — achieved with cubic
-//  Bezier curves where the control points pull
-//  the path almost all the way to the centre.
+//  Draws a single Gemini 4-pointed sparkle star.
+//  Deeply concave bezier curves between points.
 // ─────────────────────────────────────────────
 function drawSparkle(ctx, cx, cy, size) {
-    const r  = size;          // tip distance from centre
-    const cp = size * 0.08;   // control-point pull (very small = very concave)
+    const r  = size;
+    const cp = size * 0.08;
 
     ctx.beginPath();
-    // Top point
     ctx.moveTo(cx, cy - r);
-    // → Right point  (concave between top & right)
-    ctx.bezierCurveTo(cx + cp, cy - cp,   cx + cp, cy - cp,   cx + r, cy);
-    // → Bottom point
-    ctx.bezierCurveTo(cx + cp, cy + cp,   cx + cp, cy + cp,   cx, cy + r);
-    // → Left point
-    ctx.bezierCurveTo(cx - cp, cy + cp,   cx - cp, cy + cp,   cx - r, cy);
-    // → Back to top
-    ctx.bezierCurveTo(cx - cp, cy - cp,   cx - cp, cy - cp,   cx, cy - r);
+    ctx.bezierCurveTo(cx + cp, cy - cp,  cx + cp, cy - cp,  cx + r, cy);
+    ctx.bezierCurveTo(cx + cp, cy + cp,  cx + cp, cy + cp,  cx, cy + r);
+    ctx.bezierCurveTo(cx - cp, cy + cp,  cx - cp, cy + cp,  cx - r, cy);
+    ctx.bezierCurveTo(cx - cp, cy - cp,  cx - cp, cy - cp,  cx, cy - r);
     ctx.closePath();
     ctx.fill();
 }
 
 // ─────────────────────────────────────────────
-//  PILL SPARKLE RING
-//  Tiles sparkles across the pill canvas, then
-//  masks opacity based on distance from the
-//  pill's centre — full opacity at the edge,
-//  zero in the middle — creating the ring effect.
-//  Also dims sparkles on the lower half (shadow side).
+//  Multi-frequency noise function (layered sines)
+//  Returns a value between 0 and 1 that creates
+//  organic, flowing wave bands across the pill.
+// ─────────────────────────────────────────────
+function waveNoise(x, y, W, H) {
+    // Normalise coords
+    const nx = x / W;
+    const ny = y / H;
+
+    // Multiple sine waves at different angles and frequencies
+    // to create moiré-like flowing contours
+    const w1 = Math.sin(nx * 28 + ny * 12) * 0.5 + 0.5;
+    const w2 = Math.sin(nx * 15 - ny * 22 + 1.3) * 0.5 + 0.5;
+    const w3 = Math.sin(nx * 8  + ny * 35 + 2.7) * 0.5 + 0.5;
+    const w4 = Math.sin(nx * 42 + ny * 5  + 0.8) * 0.5 + 0.5;
+    const w5 = Math.sin((nx + ny) * 20 + 3.1) * 0.5 + 0.5;
+    const w6 = Math.sin((nx * 2 - ny * 1.5) * 18 + 4.2) * 0.5 + 0.5;
+
+    // Blend with different weights — w1/w2 dominant, others add variation
+    return (w1 * 0.30 + w2 * 0.25 + w3 * 0.18 + w4 * 0.12 + w5 * 0.08 + w6 * 0.07);
+}
+
+// ─────────────────────────────────────────────
+//  PILL SPARKLE RING — with wavy flowing pattern
+//
+//  Instead of uniform opacity across the ring,
+//  each sparkle's visibility is modulated by
+//  multi-frequency waves. This creates flowing
+//  bands where sparkles cluster and thin out,
+//  giving the premium holographic/moiré quality.
 // ─────────────────────────────────────────────
 function drawPillSparkles() {
     const pill   = document.querySelector('.pill-wrapper');
@@ -295,58 +310,63 @@ function drawPillSparkles() {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    // Pill geometry for the elliptical mask
     const cx = W / 2;
     const cy = H / 2;
-    // Semi-axes: shrunk slightly so the ellipse sits just inside the pill border
     const rx = W / 2 - 2;
     const ry = H / 2 - 2;
 
-    const GRID  = 4;   // px between sparkle centres — tight packing like original
-    const SIZE  = 1.5; // sparkle tip-to-centre distance (px) — small & dense
+    const GRID = 3.5;  // Tight grid
+    const SIZE = 1.4;  // Small stars
 
     for (let y = 0; y < H; y += GRID) {
         for (let x = 0; x < W; x += GRID) {
-            // Alternate rows offset for honeycomb packing
             const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
             const px = x + ox;
             const py = y;
 
-            // Distance from this sparkle to the pill centre, normalised to ellipse
+            // Elliptical distance from centre
             const dx = (px - cx) / rx;
             const dy = (py - cy) / ry;
-            const d  = Math.sqrt(dx * dx + dy * dy); // 0 = centre, 1 = pill edge
+            const d  = Math.sqrt(dx * dx + dy * dy);
 
-            // Only render sparkles in the outer ring — keep centre clean
-            if (d < 0.55) continue;
+            // Keep centre clean
+            if (d < 0.50) continue;
 
-            // Ring opacity: ramps from 0 at d=0.55 to 1 at d=0.85
-            const ringAlpha = Math.min(1, (d - 0.55) / 0.30);
+            // Base ring alpha
+            const ringAlpha = Math.min(1, (d - 0.50) / 0.35);
 
-            // Vertical dimming: top half brighter, bottom half dimmer
-            const vertFactor = 0.45 + 0.55 * (1 - (py / H)); // 1 at top, 0.45 at bottom
+            // Wave modulation — creates the flowing pattern
+            const wave = waveNoise(px, py, W, H);
 
-            // Colour: interpolate between bright cyan-white (top) and dim teal (bottom)
-            const topColor    = { r: 185, g: 250, b: 230 };
-            const bottomColor = { r: 80,  g: 190, b: 168 };
+            // Map wave to opacity: some bands go bright, others go dim/invisible
+            // Use a curve so we get crisp "on" bands and softer "off" areas
+            const waveFactor = Math.pow(wave, 0.7); // Slightly boost mids
+
+            // Combine: ring mask × wave pattern × vertical lighting
+            const vertFactor = 0.40 + 0.60 * (1 - (py / H));
+
+            // Colour gradient: top = bright cyan-white, bottom = dim teal
+            const topColor    = { r: 190, g: 252, b: 235 };
+            const bottomColor = { r: 70,  g: 185, b: 162 };
             const t = py / H;
             const r = Math.round(topColor.r + (bottomColor.r - topColor.r) * t);
             const g = Math.round(topColor.g + (bottomColor.g - topColor.g) * t);
             const b = Math.round(topColor.b + (bottomColor.b - topColor.b) * t);
 
-            const alpha = ringAlpha * vertFactor;
+            const alpha = ringAlpha * waveFactor * vertFactor;
+            if (alpha < 0.03) continue; // Skip invisible sparkles for perf
+
+            // Vary size slightly with wave for extra organic feel
+            const sizeVar = SIZE * (0.8 + waveFactor * 0.4);
 
             ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-            drawSparkle(ctx, px, py, SIZE);
+            drawSparkle(ctx, px, py, sizeVar);
         }
     }
 }
 
 // ─────────────────────────────────────────────
-//  BACKGROUND SPARKLE FIELD
-//  Faint Gemini stars scattered across the page
-//  background, concentrated in the upper area
-//  (matching the screenshot's ambient field).
+//  BACKGROUND SPARKLE FIELD — also wavy
 // ─────────────────────────────────────────────
 function drawBgSparkles() {
     const canvas = document.getElementById('bg-canvas');
@@ -362,15 +382,14 @@ function drawBgSparkles() {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    const GRID = 10;
-    const SIZE = 1.2;
+    const GRID = 8;
+    const SIZE = 1.1;
 
-    // Focus on upper-centre of viewport (where screenshot shows them)
-    const focusX = W * 0.58;
-    const focusY = H * 0.15;
-    const spread = Math.min(W, H) * 0.38;
+    const focusX = W * 0.55;
+    const focusY = H * 0.18;
+    const spread = Math.min(W, H) * 0.42;
 
-    for (let y = 0; y < H * 0.55; y += GRID) {
+    for (let y = 0; y < H * 0.6; y += GRID) {
         for (let x = 0; x < W; x += GRID) {
             const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
             const px = x + ox;
@@ -379,11 +398,17 @@ function drawBgSparkles() {
             const distFromFocus = Math.sqrt(
                 Math.pow(px - focusX, 2) + Math.pow(py - focusY, 2)
             );
-            const alpha = Math.max(0, 1 - distFromFocus / spread) * 0.35;
+            const distAlpha = Math.max(0, 1 - distFromFocus / spread);
+
+            // Wave pattern for background too
+            const wave = waveNoise(px * 0.7, py * 0.7, W, H);
+
+            const alpha = distAlpha * wave * 0.40;
             if (alpha < 0.02) continue;
 
+            const sizeVar = SIZE * (0.7 + wave * 0.6);
             ctx.fillStyle = `rgba(88, 212, 188, ${alpha})`;
-            drawSparkle(ctx, px, py, SIZE);
+            drawSparkle(ctx, px, py, sizeVar);
         }
     }
 }
