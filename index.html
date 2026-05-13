@@ -302,8 +302,8 @@ function drawPillSparkles() {
     const rx = W / 2 - 2;
     const ry = H / 2 - 2;
 
-    const GRID  = 7;   // px between sparkle centres
-    const SIZE  = 2.2; // sparkle tip-to-centre distance (px) — crisp at 2× dpr
+    const GRID  = 4;   // px between sparkle centres — tight packing like original
+    const SIZE  = 1.5; // sparkle tip-to-centre distance (px) — small & dense
 
     for (let y = 0; y < H; y += GRID) {
         for (let x = 0; x < W; x += GRID) {
@@ -317,12 +317,11 @@ function drawPillSparkles() {
             const dy = (py - cy) / ry;
             const d  = Math.sqrt(dx * dx + dy * dy); // 0 = centre, 1 = pill edge
 
-            // Only render sparkles in the outer ring (d > 0.45)
-            // Fade in from d=0.45 to fully opaque at d=0.85+
-            if (d < 0.42) continue;
+            // Only render sparkles in the outer ring
+            if (d < 0.3) continue;
 
-            // Ring opacity: ramps from 0 at d=0.42 to 1 at d=0.85
-            const ringAlpha = Math.min(1, (d - 0.42) / 0.43);
+            // Ring opacity: ramps from 0 at d=0.3 to 1 at d=0.75
+            const ringAlpha = Math.min(1, (d - 0.3) / 0.45);
 
             // Vertical dimming: top half brighter, bottom half dimmer
             const vertFactor = 0.45 + 0.55 * (1 - (py / H)); // 1 at top, 0.45 at bottom
@@ -363,8 +362,8 @@ function drawBgSparkles() {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    const GRID = 18;
-    const SIZE = 1.6;
+    const GRID = 10;
+    const SIZE = 1.2;
 
     // Focus on upper-centre of viewport (where screenshot shows them)
     const focusX = W * 0.58;
