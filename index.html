@@ -317,11 +317,11 @@ function drawPillSparkles() {
             const dy = (py - cy) / ry;
             const d  = Math.sqrt(dx * dx + dy * dy); // 0 = centre, 1 = pill edge
 
-            // Only render sparkles in the outer ring
-            if (d < 0.3) continue;
+            // Only render sparkles in the outer ring — keep centre clean
+            if (d < 0.55) continue;
 
-            // Ring opacity: ramps from 0 at d=0.3 to 1 at d=0.75
-            const ringAlpha = Math.min(1, (d - 0.3) / 0.45);
+            // Ring opacity: ramps from 0 at d=0.55 to 1 at d=0.85
+            const ringAlpha = Math.min(1, (d - 0.55) / 0.30);
 
             // Vertical dimming: top half brighter, bottom half dimmer
             const vertFactor = 0.45 + 0.55 * (1 - (py / H)); // 1 at top, 0.45 at bottom
