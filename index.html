@@ -351,9 +351,9 @@ function drawPillSparkles() {
     // ── 3-pass blur rendering ──────────────────────────────────────────
     // inset: 0=edge, 1=centre. Sparkles only in the outer band.
     const passes = [
-        { maxInset: 0.28, minInset: 0,    blur: 0   },  // Outer: crisp
-        { maxInset: 0.36, minInset: 0.28, blur: 1.4 },  // Mid: soft
-        { maxInset: 0.55, minInset: 0.36, blur: 3.5 },  // Inner: heavy blur dissolve
+        { maxInset: 0.22, minInset: 0,    blur: 0   },  // Outer: crisp
+        { maxInset: 0.32, minInset: 0.22, blur: 1.0 },  // Mid: soft
+        { maxInset: 0.60, minInset: 0.32, blur: 2.0 },  // Inner: blur dissolves further in
     ];
 
     for (const pass of passes) {
@@ -382,7 +382,7 @@ function drawPillSparkles() {
                 // The inner edge is displaced by the wave: at peaks sparkles
                 // intrude slightly deeper, at troughs they pull back.
                 // Large displacement (0.22) makes the boundary feel alive/breathing.
-                const innerLimit = 0.44 + (waveFactor - 0.5) * 0.22;
+                const innerLimit = 0.55 + (waveFactor - 0.5) * 0.22;
                 if (inset > innerLimit) continue;
 
                 // Ring alpha: full at edge, fading toward inner limit
