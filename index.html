@@ -348,78 +348,77 @@ function drawPillSparkles() {
     ctx.closePath();
     ctx.clip();
 
-    // ── Multi-pass blur rendering ──────────────────────────────────────
-    // Two-axis blur:
-    //   - Distance from edge: inner sparkles blur more (dissolve toward centre)
-    //   - VERTICAL: top half heavily blurred (matches original — top is a glow,
-    //     bottom is discrete sparkles).
-    //
-    // yMin/yMax are normalised (0=top, 1=bottom).
+    // ── 3-pass blur rendering ──────────────────────────────────────────
+    // inset: 0=edge, 1=centre. Sparkles only in the outer band.
+    // Top sparkles get extra blur added via vertical position.
     const passes = [
-        // ── TOP HALF — single heavy-blur pass across all distance bands ──
-        { maxInset: 0.42, minInset: 0,    yMin: 0.0,  yMax: 0.55, blur: 3.5 },
-        // ── BOTTOM HALF — 3-band distance blur (crisp → soft → dissolve) ──
-        { maxInset: 0.18, minInset: 0,    yMin: 0.55, yMax: 1.0,  blur: 0   },
-        { maxInset: 0.28, minInset: 0.18, yMin: 0.55, yMax: 1.0,  blur: 1.0 },
-        { maxInset: 0.42, minInset: 0.28, yMin: 0.55, yMax: 1.0,  blur: 2.0 },
+        { maxInset: 0.18, minInset: 0,    blur: 0   },  // Outer: crisp
+        { maxInset: 0.28, minInset: 0.18, blur: 1.0 },  // Mid: soft
+        { maxInset: 0.42, minInset: 0.28, blur: 2.0 },  // Inner: dissolve
     ];
 
     for (const pass of passes) {
         ctx.save();
-        if (pass.blur > 0) ctx.filter = `blur(${pass.blur}px)`;
+        // Base blur from distance pass + extra blur for top half (vertical gradient)
+        // Top of pill (ny=0) gets +1.5px extra blur, bottom gets +0
+        // This softens the top sparkles without nuking them
+        // We apply the max possible here; per-sparkle we can't change filter mid-draw
+        // So we split into sub-passes for top and bottom
+        const subPasses = [
+            { yMin: 0.0,  yMax: 0.45, extraBlur: 1.5 },  // Top: slightly softer
+            { yMin: 0.45, yMax: 1.0,  extraBlur: 0   },  // Bottom: as-is
+        ];
 
-        for (let y = 0; y < H; y += GRID) {
-            for (let x = 0; x < W; x += GRID) {
-                const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
-                const px = x + ox;
-                const py = y;
+        for (const sub of subPasses) {
+            ctx.save();
+            const totalBlur = pass.blur + sub.extraBlur;
+            if (totalBlur > 0) ctx.filter = `blur(${totalBlur}px)`;
 
-                // Vertical gate: skip sparkles outside this pass's Y band
-                const ny = py / H;
-                if (ny < pass.yMin || ny >= pass.yMax) continue;
+            for (let y = Math.floor(H * sub.yMin); y < H * sub.yMax; y += GRID) {
+                for (let x = 0; x < W; x += GRID) {
+                    const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
+                    const px = x + ox;
+                    const py = y;
 
-                // How far inward from the pill edge (0=edge, 1=centre)
-                const inset = pillInset(px, py);
+                    // How far inward from the pill edge (0=edge, 1=centre)
+                    const inset = pillInset(px, py);
 
-                // Skip sparkles outside this pass's band
-                if (inset < pass.minInset || inset >= pass.maxInset) continue;
-                // Skip anything too deep (beyond all passes)
-                if (inset < 0) continue;
+                    // Skip sparkles outside this pass's band
+                    if (inset < pass.minInset || inset >= pass.maxInset) continue;
+                    if (inset < 0) continue;
 
-                // Wave at this point
-                const wave = waveNoise(px, py, W, H);
-                const waveFactor = Math.pow(wave, 0.7);
+                    // Wave at this point
+                    const wave = waveNoise(px, py, W, H);
+                    const waveFactor = Math.pow(wave, 0.7);
 
-                // ── Organic inner boundary ──────────────────────────────────
-                // The inner edge is displaced by the wave: at peaks sparkles
-                // intrude slightly deeper, at troughs they pull back.
-                // Top half pushes a bit deeper since it's a soft glow not discrete stars.
-                const isTop = (py / H) < 0.55;
-                const baseLimit = isTop ? 0.44 : 0.38;
-                const innerLimit = baseLimit + (waveFactor - 0.5) * 0.22;
-                if (inset > innerLimit) continue;
+                    // ── Organic inner boundary ──────────────────────────────────
+                    const innerLimit = 0.38 + (waveFactor - 0.5) * 0.22;
+                    if (inset > innerLimit) continue;
 
-                // Ring alpha: full at edge, fading toward inner limit
-                const ringAlpha = Math.min(1, (innerLimit - inset) / 0.20);
+                    // Ring alpha: full at edge, fading toward inner limit
+                    const ringAlpha = Math.min(1, (innerLimit - inset) / 0.20);
 
-                // Vertical lighting: top bright, bottom dim
-                const vertFactor = 0.40 + 0.60 * (1 - py / H);
+                    // Vertical lighting: top bright, bottom dim
+                    const vertFactor = 0.40 + 0.60 * (1 - py / H);
 
-                // Colour: top=cyan-white, bottom=dim teal
-                const t = py / H;
-                const r = Math.round(190 + (70  - 190) * t);
-                const g = Math.round(252 + (185 - 252) * t);
-                const b = Math.round(235 + (162 - 235) * t);
+                    // Colour: top=cyan-white, bottom=dim teal
+                    const t = py / H;
+                    const r = Math.round(190 + (70  - 190) * t);
+                    const g = Math.round(252 + (185 - 252) * t);
+                    const b = Math.round(235 + (162 - 235) * t);
 
-                const alpha = ringAlpha * waveFactor * vertFactor;
-                if (alpha < 0.03) continue;
+                    const alpha = ringAlpha * waveFactor * vertFactor;
+                    if (alpha < 0.03) continue;
 
-                const bloomScale = pass.blur > 0 ? 1.0 + pass.blur * 0.25 : 1.0;
-                const sizeVar = SIZE * (0.8 + waveFactor * 0.4) * bloomScale;
+                    const bloomScale = totalBlur > 0 ? 1.0 + totalBlur * 0.2 : 1.0;
+                    const sizeVar = SIZE * (0.8 + waveFactor * 0.4) * bloomScale;
 
-                ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-                drawSparkle(ctx, px, py, sizeVar);
+                    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+                    drawSparkle(ctx, px, py, sizeVar);
+                }
             }
+
+            ctx.restore();
         }
 
         ctx.restore();
