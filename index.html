@@ -321,10 +321,11 @@ function drawPillSparkles() {
     // We'll draw in multiple passes grouped by blur level
     // so we can batch filter changes (expensive to switch per-sparkle).
     // Pass 0: sharp (outer edge), Pass 1: slight blur, Pass 2: heavy blur (inner edge dissolve)
+    // Inner threshold pushed outward (0.42 -> 0.65) so the centre stays free.
     const passes = [
-        { minD: 0.72, maxD: 1.2, blur: 0 },      // Outer: crisp
-        { minD: 0.58, maxD: 0.72, blur: 0.6 },    // Mid-ring: slightly soft
-        { minD: 0.42, maxD: 0.58, blur: 1.4 },    // Inner edge: blurred/dissolved
+        { minD: 0.85, maxD: 1.2,  blur: 0   },   // Outer: crisp
+        { minD: 0.75, maxD: 0.85, blur: 0.6 },   // Mid-ring: slightly soft
+        { minD: 0.65, maxD: 0.75, blur: 1.4 },   // Inner edge: blurred/dissolved
     ];
 
     for (const pass of passes) {
@@ -348,7 +349,7 @@ function drawPillSparkles() {
                 if (d < pass.minD || d >= pass.maxD) continue;
 
                 // Ring alpha: fades from 0 at innermost to 1 at outermost
-                const ringAlpha = Math.min(1, (d - 0.42) / 0.45);
+                const ringAlpha = Math.min(1, (d - 0.65) / 0.30);
 
                 // Wave modulation — creates the flowing pattern
                 const wave = waveNoise(px, py, W, H);
