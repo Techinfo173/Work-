@@ -310,29 +310,42 @@ function drawPillSparkles() {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
+    const radius = H / 2; // pill border-radius = 999px = half height
     const cx = W / 2;
     const cy = H / 2;
-    const rx = W / 2 - 2;
-    const ry = H / 2 - 2;
+    const rx = W / 2 - 1;
+    const ry = H / 2 - 1;
 
-    const GRID = 3.5;  // Tight grid
-    const SIZE = 1.4;  // Small stars
+    const GRID = 3.5;
+    const SIZE = 1.4;
 
-    // We'll draw in multiple passes grouped by blur level
-    // so we can batch filter changes (expensive to switch per-sparkle).
-    // Pass 0: sharp (outer edge), Pass 1: slight blur, Pass 2: heavy blur (inner edge dissolve)
-    // Inner threshold pushed outward (0.42 -> 0.65) so the centre stays free.
+    // ── 3-pass blur rendering ──────────────────────────────────────────
     const passes = [
-        { minD: 0.85, maxD: 1.2,  blur: 0   },   // Outer: crisp
-        { minD: 0.75, maxD: 0.85, blur: 0.6 },   // Mid-ring: slightly soft
-        { minD: 0.65, maxD: 0.75, blur: 1.4 },   // Inner edge: blurred/dissolved
+        { minD: 0.85, maxD: 1.05, blur: 0   },  // Outer: crisp
+        { minD: 0.75, maxD: 0.85, blur: 0.5 },  // Mid: slightly soft
+        { minD: 0.65, maxD: 0.75, blur: 1.3 },  // Inner dissolve
     ];
 
     for (const pass of passes) {
         ctx.save();
-        if (pass.blur > 0) {
-            ctx.filter = `blur(${pass.blur}px)`;
-        }
+
+        // ── CLIP to pill rounded-rect shape ───────────────────────────
+        // This prevents sparkles from rendering outside the rounded corners.
+        // We draw the pill outline as a clip path exactly matching the CSS shape.
+        ctx.beginPath();
+        ctx.moveTo(radius, 0);
+        ctx.lineTo(W - radius, 0);
+        ctx.arcTo(W, 0, W, radius, radius);
+        ctx.lineTo(W, H - radius);
+        ctx.arcTo(W, H, W - radius, H, radius);
+        ctx.lineTo(radius, H);
+        ctx.arcTo(0, H, 0, H - radius, radius);
+        ctx.lineTo(0, radius);
+        ctx.arcTo(0, 0, radius, 0, radius);
+        ctx.closePath();
+        ctx.clip();
+
+        if (pass.blur > 0) ctx.filter = `blur(${pass.blur}px)`;
 
         for (let y = 0; y < H; y += GRID) {
             for (let x = 0; x < W; x += GRID) {
@@ -340,37 +353,41 @@ function drawPillSparkles() {
                 const px = x + ox;
                 const py = y;
 
-                // Elliptical distance from centre
+                // Normalised elliptical distance from pill centre (0=centre, 1=edge)
                 const dx = (px - cx) / rx;
                 const dy = (py - cy) / ry;
                 const d  = Math.sqrt(dx * dx + dy * dy);
 
-                // Only draw sparkles in this pass's distance band
                 if (d < pass.minD || d >= pass.maxD) continue;
 
-                // Ring alpha: fades from 0 at innermost to 1 at outermost
-                const ringAlpha = Math.min(1, (d - 0.65) / 0.30);
-
-                // Wave modulation — creates the flowing pattern
+                // Wave at this point
                 const wave = waveNoise(px, py, W, H);
                 const waveFactor = Math.pow(wave, 0.7);
 
-                // Vertical lighting
-                const vertFactor = 0.40 + 0.60 * (1 - (py / H));
+                // ── Organic inner boundary ──────────────────────────────────
+                // Instead of a hard d >= 0.65 cutoff, the inner edge is
+                // displaced by the wave itself: at wave peaks the sparkles
+                // intrude slightly inward, at troughs they pull back outward.
+                // This breaks the mechanical ellipse into an irregular organic edge.
+                const innerBoundary = 0.65 + (waveFactor - 0.5) * 0.12;
+                if (d < innerBoundary) continue;
 
-                // Colour gradient: top = bright cyan-white, bottom = dim teal
-                const topColor    = { r: 190, g: 252, b: 235 };
-                const bottomColor = { r: 70,  g: 185, b: 162 };
+                // Ring alpha: zero at inner boundary, ramps to full quickly
+                const ringAlpha = Math.min(1, (d - innerBoundary) / 0.22);
+
+                // Vertical lighting: top bright, bottom dim
+                const vertFactor = 0.40 + 0.60 * (1 - py / H);
+
+                // Colour: top=cyan-white, bottom=dim teal
                 const t = py / H;
-                const r = Math.round(topColor.r + (bottomColor.r - topColor.r) * t);
-                const g = Math.round(topColor.g + (bottomColor.g - topColor.g) * t);
-                const b = Math.round(topColor.b + (bottomColor.b - topColor.b) * t);
+                const r = Math.round(190 + (70  - 190) * t);
+                const g = Math.round(252 + (185 - 252) * t);
+                const b = Math.round(235 + (162 - 235) * t);
 
                 const alpha = ringAlpha * waveFactor * vertFactor;
                 if (alpha < 0.03) continue;
 
-                // Vary size — inner blurred sparkles are slightly larger (bloom effect)
-                const bloomScale = pass.blur > 0 ? 1.0 + pass.blur * 0.3 : 1.0;
+                const bloomScale = pass.blur > 0 ? 1.0 + pass.blur * 0.25 : 1.0;
                 const sizeVar = SIZE * (0.8 + waveFactor * 0.4) * bloomScale;
 
                 ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
