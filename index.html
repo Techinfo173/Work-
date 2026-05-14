@@ -348,12 +348,20 @@ function drawPillSparkles() {
     ctx.closePath();
     ctx.clip();
 
-    // ── 3-pass blur rendering ──────────────────────────────────────────
-    // inset: 0=edge, 1=centre. Sparkles only in the outer band.
+    // ── Multi-pass blur rendering ──────────────────────────────────────
+    // Two-axis blur:
+    //   - Distance from edge: inner sparkles blur more (dissolve toward centre)
+    //   - VERTICAL: top half heavily blurred (matches original — top is a glow,
+    //     bottom is discrete sparkles).
+    //
+    // yMin/yMax are normalised (0=top, 1=bottom).
     const passes = [
-        { maxInset: 0.18, minInset: 0,    blur: 0   },  // Outer: crisp
-        { maxInset: 0.28, minInset: 0.18, blur: 1.0 },  // Mid: soft
-        { maxInset: 0.42, minInset: 0.28, blur: 2.0 },  // Inner: blur dissolves toward free centre
+        // ── TOP HALF — single heavy-blur pass across all distance bands ──
+        { maxInset: 0.42, minInset: 0,    yMin: 0.0,  yMax: 0.55, blur: 3.5 },
+        // ── BOTTOM HALF — 3-band distance blur (crisp → soft → dissolve) ──
+        { maxInset: 0.18, minInset: 0,    yMin: 0.55, yMax: 1.0,  blur: 0   },
+        { maxInset: 0.28, minInset: 0.18, yMin: 0.55, yMax: 1.0,  blur: 1.0 },
+        { maxInset: 0.42, minInset: 0.28, yMin: 0.55, yMax: 1.0,  blur: 2.0 },
     ];
 
     for (const pass of passes) {
@@ -365,6 +373,10 @@ function drawPillSparkles() {
                 const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
                 const px = x + ox;
                 const py = y;
+
+                // Vertical gate: skip sparkles outside this pass's Y band
+                const ny = py / H;
+                if (ny < pass.yMin || ny >= pass.yMax) continue;
 
                 // How far inward from the pill edge (0=edge, 1=centre)
                 const inset = pillInset(px, py);
@@ -381,8 +393,10 @@ function drawPillSparkles() {
                 // ── Organic inner boundary ──────────────────────────────────
                 // The inner edge is displaced by the wave: at peaks sparkles
                 // intrude slightly deeper, at troughs they pull back.
-                // Large displacement (0.22) makes the boundary feel alive/breathing.
-                const innerLimit = 0.38 + (waveFactor - 0.5) * 0.22;
+                // Top half pushes a bit deeper since it's a soft glow not discrete stars.
+                const isTop = (py / H) < 0.55;
+                const baseLimit = isTop ? 0.44 : 0.38;
+                const innerLimit = baseLimit + (waveFactor - 0.5) * 0.22;
                 if (inset > innerLimit) continue;
 
                 // Ring alpha: full at edge, fading toward inner limit
