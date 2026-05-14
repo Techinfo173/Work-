@@ -310,16 +310,30 @@ function drawPillSparkles() {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    const cx = W / 2;
-    const cy = H / 2;
-    const rx = W / 2;
-    const ry = H / 2;
-
     const GRID = 3.5;
     const SIZE = 1.4;
 
-    // ── Clip to pill rounded-rect so sparkles don't poke outside curves ─
+    // ── Pill geometry ─────────────────────────────────────────────────
+    // The pill is a stadium (rounded rectangle): two semicircles of
+    // radius=H/2 connected by straight top/bottom edges.
     const radius = H / 2;
+
+    // ── Distance-from-edge function (stadium SDF) ─────────────────────
+    // Returns 0 at the outer pill edge, 1 at the very centre.
+    // This gives UNIFORM ring thickness regardless of pill aspect ratio.
+    function pillInset(px, py) {
+        // Clamp x to the straight section (between the two semicircles)
+        const cx = Math.max(radius, Math.min(px, W - radius));
+        const cy = H / 2;
+        // Distance from nearest point on the pill's medial axis
+        const dx = px - cx;
+        const dy = py - cy;
+        const distFromAxis = Math.sqrt(dx * dx + dy * dy);
+        // Normalise: 0 = edge of pill, 1 = centre axis
+        return 1 - (distFromAxis / radius);
+    }
+
+    // ── Clip to pill rounded-rect so sparkles don't poke outside curves ─
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(radius, 0);
@@ -335,11 +349,11 @@ function drawPillSparkles() {
     ctx.clip();
 
     // ── 3-pass blur rendering ──────────────────────────────────────────
-    // maxD=2 ensures sparkles fill all the way to rounded ends of the wide pill
+    // inset: 0=edge, 1=centre. Sparkles only in the outer band.
     const passes = [
-        { minD: 0.78, maxD: 2.0, blur: 0   },  // Outer: crisp, fills to edges
-        { minD: 0.68, maxD: 0.78, blur: 0.6 },  // Mid: slightly soft
-        { minD: 0.55, maxD: 0.68, blur: 1.4 },  // Inner dissolve
+        { maxInset: 0.35, minInset: 0,    blur: 0   },  // Outer: crisp
+        { maxInset: 0.45, minInset: 0.35, blur: 0.6 },  // Mid: slightly soft
+        { maxInset: 0.55, minInset: 0.45, blur: 1.4 },  // Inner dissolve
     ];
 
     for (const pass of passes) {
@@ -352,12 +366,13 @@ function drawPillSparkles() {
                 const px = x + ox;
                 const py = y;
 
-                // Normalised elliptical distance from pill centre (0=centre, 1=edge)
-                const dx = (px - cx) / rx;
-                const dy = (py - cy) / ry;
-                const d  = Math.sqrt(dx * dx + dy * dy);
+                // How far inward from the pill edge (0=edge, 1=centre)
+                const inset = pillInset(px, py);
 
-                if (d < pass.minD || d >= pass.maxD) continue;
+                // Skip sparkles outside this pass's band
+                if (inset < pass.minInset || inset >= pass.maxInset) continue;
+                // Skip anything too deep (beyond all passes)
+                if (inset < 0) continue;
 
                 // Wave at this point
                 const wave = waveNoise(px, py, W, H);
@@ -365,13 +380,12 @@ function drawPillSparkles() {
 
                 // ── Organic inner boundary ──────────────────────────────────
                 // The inner edge is displaced by the wave: at peaks sparkles
-                // intrude slightly inward, at troughs they pull back.
-                // This breaks the mechanical ellipse into an irregular organic edge.
-                const innerBoundary = 0.58 + (waveFactor - 0.5) * 0.14;
-                if (d < innerBoundary) continue;
+                // intrude slightly deeper, at troughs they pull back.
+                const innerLimit = 0.50 + (waveFactor - 0.5) * 0.12;
+                if (inset > innerLimit) continue;
 
-                // Ring alpha: zero at inner boundary, ramps to full
-                const ringAlpha = Math.min(1, (d - innerBoundary) / 0.25);
+                // Ring alpha: full at edge, fading toward inner limit
+                const ringAlpha = Math.min(1, (innerLimit - inset) / 0.20);
 
                 // Vertical lighting: top bright, bottom dim
                 const vertFactor = 0.40 + 0.60 * (1 - py / H);
