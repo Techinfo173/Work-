@@ -1,492 +1,121 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ask Gemini</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@300;400&family=Inter:wght@300;400&display=swap');
-
-        :root {
-            --bg-page: #02080a;
-            --pill-top:    #1c3d38;
-            --pill-mid:    #0f2a26;
-            --pill-bottom: #04100e;
-            --text-color: #f0faf8;
-            --icon-color: #f4fbf9;
-            --glow-core: #d4fbf0;
-            --glow-mid:  #4ee0c8;
-            --glow-deep: #128878;
-        }
-
-        * { box-sizing: border-box; }
-
-        body {
-            margin: 0;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--bg-page);
-            font-family: 'Google Sans', 'Inter', -apple-system, sans-serif;
-            -webkit-font-smoothing: antialiased;
-            position: relative;
-            overflow: hidden;
-        }
-
-        /* Background ambient glow */
-        body::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 800px;
-            height: 300px;
-            transform: translate(-50%, 20%);
-            background: radial-gradient(ellipse at center,
-                rgba(30, 160, 140, 0.12) 0%,
-                transparent 65%);
-            filter: blur(30px);
-            pointer-events: none;
-        }
-
-        /* Canvas for background sparkle field */
-        #bg-canvas {
-            position: fixed;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        .pill-wrapper {
-            position: relative;
-            width: 560px;
-            height: 100px;
-            border-radius: 999px;
-            background: linear-gradient(180deg,
-                var(--pill-top)    0%,
-                var(--pill-mid)   45%,
-                var(--pill-bottom) 100%);
-            box-shadow:
-                0 28px 55px rgba(0,0,0,0.9),
-                0  8px 20px rgba(0,0,0,0.6),
-                0  0  50px rgba(30,160,140,0.07),
-                inset 0  1px 0 rgba(160,240,210,0.15),
-                inset 0 -6px 16px rgba(0,0,0,0.5);
-            overflow: hidden;
-            z-index: 1;
-        }
-
-        /* Canvas for the Gemini sparkle ring on the pill */
-        #pill-canvas {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-
-        /* Inner rim glow */
-        .pill-rim {
-            position: absolute;
-            inset: 0;
-            border-radius: 999px;
-            box-shadow:
-                inset 0 0 24px rgba(60,210,185,0.20),
-                inset 0 0 60px rgba(35,150,135,0.10);
-            pointer-events: none;
-            z-index: 2;
-        }
-
-        /* Subtle top gloss */
-        .pill-gloss {
-            position: absolute;
-            top: 0; left: 4%; right: 4%;
-            height: 38%;
-            border-radius: 999px 999px 60% 60%;
-            background: linear-gradient(180deg,
-                rgba(255,255,255,0.045) 0%,
-                transparent 100%);
-            pointer-events: none;
-            z-index: 2;
-        }
-
-        .pill-content {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 30px 0 32px;
-            z-index: 10;
-        }
-
-        .left-group  { display: flex; align-items: center; gap: 26px; }
-        .right-group { display: flex; align-items: center; gap: 20px; }
-
-        .icon-btn {
-            background: none; border: none; padding: 0;
-            cursor: pointer; color: var(--icon-color);
-            display: flex; align-items: center; justify-content: center;
-            outline: none; transition: opacity 0.2s ease;
-        }
-        .icon-btn:hover { opacity: 0.72; }
-
-        .icon-plus svg { width: 30px; height: 30px; }
-
-        .text-ask {
-            font-size: 30px;
-            font-weight: 300;
-            color: var(--text-color);
-            letter-spacing: 0.2px;
-            user-select: none;
-            text-shadow: 0 0 20px rgba(140,230,210,0.18);
-        }
-
-        /* ── MIC ── */
-        .mic-wrapper {
-            position: relative;
-            display: flex; align-items: center; justify-content: center;
-            width: 60px; height: 60px;
-        }
-
-        .mic-halo {
-            position: absolute;
-            width: 115px; height: 115px;
-            background: radial-gradient(circle,
-                rgba(145,245,220,0.38) 0%,
-                rgba(65,205,185,0.14) 32%,
-                transparent 65%);
-            border-radius: 50%;
-            filter: blur(10px);
-            pointer-events: none;
-        }
-
-        .mic-glow {
-            position: absolute;
-            width: 66px; height: 66px;
-            background: radial-gradient(circle,
-                var(--glow-core)  0%,
-                var(--glow-mid)  36%,
-                var(--glow-deep) 66%,
-                transparent 84%);
-            border-radius: 50%;
-            filter: blur(1.5px);
-            pointer-events: none;
-        }
-
-        .mic-core {
-            position: absolute;
-            width: 42px; height: 42px;
-            background: radial-gradient(circle,
-                rgba(215,255,245,0.60) 0%,
-                rgba(110,235,215,0.28) 52%,
-                transparent 78%);
-            border-radius: 50%;
-            pointer-events: none;
-        }
-
-        .icon-mic { position: relative; z-index: 2; color: #fff; }
-        .icon-mic svg {
-            width: 26px; height: 26px;
-            filter: drop-shadow(0 0 5px rgba(255,255,255,0.55));
-        }
-
-        .icon-bars svg { width: 22px; height: 22px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Void Engine</title>
+<link rel="stylesheet" href="./src/ui/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.0/build/index.module.js"
+  }
+}
+</script>
 </head>
 <body>
+  <div id="portrait-lock"><h1>Rotate Device</h1><p>Landscape Required</p></div>
 
-<!-- Background ambient sparkle canvas -->
-<canvas id="bg-canvas"></canvas>
+  <div id="start-screen">
+    <div class="boot-text">VOID ENGINE</div>
+    <div id="loading-text">INITIALIZING...</div>
+    <button id="btn-start">DEPLOY</button>
 
-<div class="pill-wrapper">
-    <!-- Pill sparkle ring canvas -->
-    <canvas id="pill-canvas"></canvas>
+    <div class="upload-row">
+      <label for="weapon-upload" class="upload-btn weapon">LOAD WEAPON (.glb)</label>
+      <input type="file" id="weapon-upload" accept=".glb,.gltf" hidden />
+      <button id="btn-clear-weapon" class="clear-btn" hidden>RESET WEAPON</button>
 
-    <div class="pill-rim"></div>
-    <div class="pill-gloss"></div>
+      <label for="map-upload" class="upload-btn map">LOAD MAP (.glb)</label>
+      <input type="file" id="map-upload" accept=".glb,.gltf" hidden />
+      <button id="btn-clear-map" class="clear-btn" hidden>RESET MAP</button>
 
-    <div class="pill-content">
-        <div class="left-group">
-            <button class="icon-btn icon-plus" aria-label="Add">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
-                    <path d="M12 4v16M4 12h16"/>
-                </svg>
-            </button>
-            <div class="text-ask">Ask Gemini</div>
-        </div>
-
-        <div class="right-group">
-            <div class="mic-wrapper">
-                <div class="mic-halo"></div>
-                <div class="mic-glow"></div>
-                <div class="mic-core"></div>
-                <button class="icon-btn icon-mic" aria-label="Voice Input">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="9" y="3" width="6" height="11" rx="3"/>
-                        <path d="M5 11v1a7 7 0 0 0 14 0v-1"/>
-                        <path d="M12 19v3"/>
-                    </svg>
-                </button>
-            </div>
-
-            <button class="icon-btn icon-bars" aria-label="Audio Wave">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-                    <path d="M7 10v4"/>
-                    <path d="M12 6v12"/>
-                    <path d="M17 10v4"/>
-                </svg>
-            </button>
-        </div>
+      <label for="sky-upload" class="upload-btn sky">LOAD SKY (.jpg/.png)</label>
+      <input type="file" id="sky-upload" accept="image/*" hidden />
     </div>
-</div>
+    <div id="error-toast" hidden></div>
+  </div>
 
-<script>
-// ─────────────────────────────────────────────
-//  Draws a single Gemini 4-pointed sparkle star.
-//  Deeply concave bezier curves between points.
-// ─────────────────────────────────────────────
-function drawSparkle(ctx, cx, cy, size) {
-    const r  = size;
-    const cp = size * 0.08;
+  <div id="hud" hidden>
+    <div id="compass">
+      <div id="compass-indicator">|</div>
+      <div id="bearing-strip"></div>
+    </div>
 
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - r);
-    ctx.bezierCurveTo(cx + cp, cy - cp,  cx + cp, cy - cp,  cx + r, cy);
-    ctx.bezierCurveTo(cx + cp, cy + cp,  cx + cp, cy + cp,  cx, cy + r);
-    ctx.bezierCurveTo(cx - cp, cy + cp,  cx - cp, cy + cp,  cx - r, cy);
-    ctx.bezierCurveTo(cx - cp, cy - cp,  cx - cp, cy - cp,  cx, cy - r);
-    ctx.closePath();
-    ctx.fill();
-}
+    <div id="touch-left"></div>
+    <div id="touch-right"></div>
+    <div id="joy-base"><div id="joy-stick"></div></div>
 
-// ─────────────────────────────────────────────
-//  Multi-frequency noise function (layered sines)
-//  Returns a value between 0 and 1 that creates
-//  organic, flowing wave bands across the pill.
-// ─────────────────────────────────────────────
-function waveNoise(x, y, W, H) {
-    // Normalise coords
-    const nx = x / W;
-    const ny = y / H;
+    <div id="crosshair">
+      <div class="ch-line ch-t"></div>
+      <div class="ch-line ch-b"></div>
+      <div class="ch-line ch-l"></div>
+      <div class="ch-line ch-r"></div>
+    </div>
 
-    // Multiple sine waves at different angles and frequencies
-    // to create moiré-like flowing contours
-    const w1 = Math.sin(nx * 28 + ny * 12) * 0.5 + 0.5;
-    const w2 = Math.sin(nx * 15 - ny * 22 + 1.3) * 0.5 + 0.5;
-    const w3 = Math.sin(nx * 8  + ny * 35 + 2.7) * 0.5 + 0.5;
-    const w4 = Math.sin(nx * 42 + ny * 5  + 0.8) * 0.5 + 0.5;
-    const w5 = Math.sin((nx + ny) * 20 + 3.1) * 0.5 + 0.5;
-    const w6 = Math.sin((nx * 2 - ny * 1.5) * 18 + 4.2) * 0.5 + 0.5;
+    <div id="hit-marker">
+      <div class="hm-line hm-1"></div>
+      <div class="hm-line hm-2"></div>
+      <div class="hm-line hm-3"></div>
+      <div class="hm-line hm-4"></div>
+    </div>
 
-    // Blend with different weights — w1/w2 dominant, others add variation
-    return (w1 * 0.30 + w2 * 0.25 + w3 * 0.18 + w4 * 0.12 + w5 * 0.08 + w6 * 0.07);
-}
+    <div id="ammo-widget">
+      <div id="status-indicator"></div>
+      <div id="ammo-current">30</div><div id="ammo-max">/ 120</div>
+      <div id="kill-widget">
+        <div class="label">KILLS</div>
+        <div id="kill-count">0</div>
+      </div>
+    </div>
 
-// ─────────────────────────────────────────────
-//  PILL SPARKLE RING — with wavy flowing pattern
-//
-//  Instead of uniform opacity across the ring,
-//  each sparkle's visibility is modulated by
-//  multi-frequency waves. This creates flowing
-//  bands where sparkles cluster and thin out,
-//  giving the premium holographic/moiré quality.
-// ─────────────────────────────────────────────
-function drawPillSparkles() {
-    const pill   = document.querySelector('.pill-wrapper');
-    const canvas = document.getElementById('pill-canvas');
-    const W = pill.offsetWidth;
-    const H = pill.offsetHeight;
-    const dpr = window.devicePixelRatio || 1;
+    <div id="vignette"></div>
+    <div id="flash-overlay"></div>
 
-    canvas.width  = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width  = W + 'px';
-    canvas.style.height = H + 'px';
+    <button id="btn-fire" class="btn-action">FIRE</button>
+    <button id="btn-ads" class="btn-action">ADS</button>
+    <button id="btn-reload" class="btn-action">RLD</button>
+    <button id="btn-jump" class="btn-action">JMP</button>
+    <button id="btn-inspect" class="btn-action">CHK</button>
+  </div>
 
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
+  <button id="btn-fullscreen" hidden>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+  </button>
 
-    const GRID = 3.5;
-    const SIZE = 1.4;
+  <button id="btn-calibrator" hidden>CAL</button>
 
-    // ── Pill geometry ─────────────────────────────────────────────────
-    // The pill is a stadium (rounded rectangle): two semicircles of
-    // radius=H/2 connected by straight top/bottom edges.
-    const radius = H / 2;
+  <div id="calibrator-ui" hidden>
+    <h3>WEAPON CALIBRATOR</h3>
+    <div class="cal-row"><label>Scale</label><span id="cal-s-val">1.00</span></div>
+    <input type="range" id="cal-s" min="0.05" max="3" step="0.01" value="1">
+    <div class="cal-row"><label>Pos X</label><span id="cal-x-val">0</span></div>
+    <input type="range" id="cal-x" min="-1" max="1" step="0.01" value="0">
+    <div class="cal-row"><label>Pos Y</label><span id="cal-y-val">0</span></div>
+    <input type="range" id="cal-y" min="-1" max="1" step="0.01" value="0">
+    <div class="cal-row"><label>Pos Z</label><span id="cal-z-val">0</span></div>
+    <input type="range" id="cal-z" min="-1" max="1" step="0.01" value="0">
+    <div class="cal-row"><label>Rot X</label><span id="cal-rx-val">0</span></div>
+    <input type="range" id="cal-rx" min="-180" max="180" step="1" value="0">
+    <div class="cal-row"><label>Rot Y</label><span id="cal-ry-val">180</span></div>
+    <input type="range" id="cal-ry" min="-180" max="180" step="1" value="180">
+    <div class="cal-row"><label>Rot Z</label><span id="cal-rz-val">0</span></div>
+    <input type="range" id="cal-rz" min="-180" max="180" step="1" value="0">
 
-    // ── Distance-from-edge function (stadium SDF) ─────────────────────
-    // Returns 0 at the outer pill edge, 1 at the very centre.
-    // This gives UNIFORM ring thickness regardless of pill aspect ratio.
-    function pillInset(px, py) {
-        // Clamp x to the straight section (between the two semicircles)
-        const cx = Math.max(radius, Math.min(px, W - radius));
-        const cy = H / 2;
-        // Distance from nearest point on the pill's medial axis
-        const dx = px - cx;
-        const dy = py - cy;
-        const distFromAxis = Math.sqrt(dx * dx + dy * dy);
-        // Normalise: 0 = edge of pill, 1 = centre axis
-        return 1 - (distFromAxis / radius);
-    }
+    <h4>Animations <button id="btn-copy-anims">COPY</button></h4>
+    <div id="anim-list" class="inspector-list">No animations</div>
 
-    // ── Clip to pill rounded-rect so sparkles don't poke outside curves ─
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(radius, 0);
-    ctx.lineTo(W - radius, 0);
-    ctx.arcTo(W, 0, W, radius, radius);
-    ctx.lineTo(W, H - radius);
-    ctx.arcTo(W, H, W - radius, H, radius);
-    ctx.lineTo(radius, H);
-    ctx.arcTo(0, H, 0, H - radius, radius);
-    ctx.lineTo(0, radius);
-    ctx.arcTo(0, 0, radius, 0, radius);
-    ctx.closePath();
-    ctx.clip();
+    <h4>Meshes</h4>
+    <div id="mesh-list" class="inspector-list">No meshes</div>
 
-    // ── 3-pass blur rendering ──────────────────────────────────────────
-    // inset: 0=edge, 1=centre. Sparkles only in the outer band.
-    // Top sparkles get extra blur added via vertical position.
-    const passes = [
-        { maxInset: 0.18, minInset: 0,    blur: 0   },  // Outer: crisp
-        { maxInset: 0.28, minInset: 0.18, blur: 1.0 },  // Mid: soft
-        { maxInset: 0.42, minInset: 0.28, blur: 2.0 },  // Inner: dissolve
-    ];
+    <div class="cal-buttons">
+      <button id="btn-reset-cal">RESET</button>
+      <button id="btn-close-cal">DONE</button>
+    </div>
+  </div>
 
-    for (const pass of passes) {
-        ctx.save();
-        // Base blur from distance pass + extra blur for top half (vertical gradient)
-        // Top of pill (ny=0) gets +1.5px extra blur, bottom gets +0
-        // This softens the top sparkles without nuking them
-        // We apply the max possible here; per-sparkle we can't change filter mid-draw
-        // So we split into sub-passes for top and bottom
-        const subPasses = [
-            { yMin: 0.0,  yMax: 0.45, extraBlur: 1.5 },  // Top: slightly softer
-            { yMin: 0.45, yMax: 1.0,  extraBlur: 0   },  // Bottom: as-is
-        ];
-
-        for (const sub of subPasses) {
-            ctx.save();
-            const totalBlur = pass.blur + sub.extraBlur;
-            if (totalBlur > 0) ctx.filter = `blur(${totalBlur}px)`;
-
-            for (let y = Math.floor(H * sub.yMin); y < H * sub.yMax; y += GRID) {
-                for (let x = 0; x < W; x += GRID) {
-                    const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
-                    const px = x + ox;
-                    const py = y;
-
-                    // How far inward from the pill edge (0=edge, 1=centre)
-                    const inset = pillInset(px, py);
-
-                    // Skip sparkles outside this pass's band
-                    if (inset < pass.minInset || inset >= pass.maxInset) continue;
-                    if (inset < 0) continue;
-
-                    // Wave at this point
-                    const wave = waveNoise(px, py, W, H);
-                    const waveFactor = Math.pow(wave, 0.7);
-
-                    // ── Organic inner boundary ──────────────────────────────────
-                    const innerLimit = 0.38 + (waveFactor - 0.5) * 0.22;
-                    if (inset > innerLimit) continue;
-
-                    // Ring alpha: full at edge, fading toward inner limit
-                    const ringAlpha = Math.min(1, (innerLimit - inset) / 0.20);
-
-                    // Vertical lighting: top bright, bottom dim
-                    const vertFactor = 0.40 + 0.60 * (1 - py / H);
-
-                    // Colour: top=cyan-white, bottom=dim teal
-                    const t = py / H;
-                    const r = Math.round(190 + (70  - 190) * t);
-                    const g = Math.round(252 + (185 - 252) * t);
-                    const b = Math.round(235 + (162 - 235) * t);
-
-                    const alpha = ringAlpha * waveFactor * vertFactor;
-                    if (alpha < 0.03) continue;
-
-                    const bloomScale = totalBlur > 0 ? 1.0 + totalBlur * 0.2 : 1.0;
-                    const sizeVar = SIZE * (0.8 + waveFactor * 0.4) * bloomScale;
-
-                    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-                    drawSparkle(ctx, px, py, sizeVar);
-                }
-            }
-
-            ctx.restore();
-        }
-
-        ctx.restore();
-    }
-
-    ctx.restore(); // restore clip
-}
-
-// ─────────────────────────────────────────────
-//  BACKGROUND SPARKLE FIELD — also wavy
-// ─────────────────────────────────────────────
-function drawBgSparkles() {
-    const canvas = document.getElementById('bg-canvas');
-    const dpr = window.devicePixelRatio || 1;
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-
-    canvas.width  = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width  = W + 'px';
-    canvas.style.height = H + 'px';
-
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-
-    const GRID = 8;
-    const SIZE = 1.1;
-
-    const focusX = W * 0.55;
-    const focusY = H * 0.18;
-    const spread = Math.min(W, H) * 0.42;
-
-    for (let y = 0; y < H * 0.6; y += GRID) {
-        for (let x = 0; x < W; x += GRID) {
-            const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
-            const px = x + ox;
-            const py = y;
-
-            const distFromFocus = Math.sqrt(
-                Math.pow(px - focusX, 2) + Math.pow(py - focusY, 2)
-            );
-            const distAlpha = Math.max(0, 1 - distFromFocus / spread);
-
-            // Wave pattern for background too
-            const wave = waveNoise(px * 0.7, py * 0.7, W, H);
-
-            const alpha = distAlpha * wave * 0.40;
-            if (alpha < 0.02) continue;
-
-            const sizeVar = SIZE * (0.7 + wave * 0.6);
-            ctx.fillStyle = `rgba(88, 212, 188, ${alpha})`;
-            drawSparkle(ctx, px, py, sizeVar);
-        }
-    }
-}
-
-// Draw both on load
-window.addEventListener('load', () => {
-    drawPillSparkles();
-    drawBgSparkles();
-});
-
-// Redraw on resize
-window.addEventListener('resize', () => {
-    drawPillSparkles();
-    drawBgSparkles();
-});
-</script>
-
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
