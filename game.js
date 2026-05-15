@@ -134,20 +134,30 @@ const S = {
  * - Movement: KinematicCharacterController.computeColliderMovement(...)
  *   handles slide, autostep, slope limits, snap-to-ground, all natively.
  */
-const PHYS = {
-  // Tunables. These are what actually fix doors/steps; they're explicit on purpose.
-  CHAR_OFFSET: 0.05,        // skin width (Rapier needs > 0)
-  AUTOSTEP_HEIGHT: 0.5,     // climb anything up to ~knee-high without thinking
-  AUTOSTEP_MIN_WIDTH: 0.2,  // step tread must be >= 20cm to be valid
-  SNAP_DIST: 0.5,           // stick to ground within 0.5m to avoid bouncing off ledges going down
-  MAX_SLOPE_CLIMB: Math.PI/4,    // 45 deg
-  MIN_SLOPE_SLIDE: Math.PI/3,    // 60 deg - steeper than this and you slide
-
-  capsuleHalfHeight: 0,     // set when player body is created
-  capsuleRadius: 0,
-  // Reused per-frame to avoid allocations
-  desired: { x:0, y:0, z:0 }
+// PHYS holds the LIVE values used by the physics layer. Defaults are intentionally
+// permissive so that thresholds, knee-high steps, and tight doorways "just work"
+// on most custom maps. The calibrator UI in index.html writes here at runtime.
+const PHYS_DEFAULTS = {
+  RADIUS: 0.18,                  // capsule radius. 0.18 + 0.02 offset = 0.40 wide; fits any normal door.
+  HEIGHT: 2.2,                   // capsule total height (eye height too)
+  CHAR_OFFSET: 0.02,             // skin width (Rapier needs > 0). Smaller = tighter fit.
+  AUTOSTEP_HEIGHT: 1.0,          // climb anything up to waist-high without jumping
+  AUTOSTEP_MIN_WIDTH: 0.05,      // even tiny ledges count as valid step tops
+  SNAP_DIST: 0.5,                // stick to ground within 0.5m so we don't bounce off downward edges
+  MAX_SLOPE_CLIMB_DEG: 50,       // climb up to 50° slopes
+  MIN_SLOPE_SLIDE_DEG: 65        // slide on slopes steeper than 65°
 };
+const PHYS = Object.assign({
+  capsuleHalfHeight: 0,
+  capsuleRadius: 0,
+  desired: { x:0, y:0, z:0 }
+}, PHYS_DEFAULTS);
+
+// Restore any saved physics calibration before init runs.
+try {
+  const saved = JSON.parse(localStorage.getItem('physCal') || 'null');
+  if (saved) Object.assign(PHYS, saved);
+} catch(e) { /* ignore corrupt saved data */ }
 
 async function initPhysics() {
   await RAPIER.init();
@@ -155,32 +165,42 @@ async function initPhysics() {
   S.physWorld = new RAPIER.World(gravity);
   // Slightly larger timestep tolerance is fine for an FPS - we step at frame rate
   S.physWorld.timestep = 1/60;
+  applyCharacterControllerConfig();  // creates S.charCtl from current PHYS values
+}
 
-  // Character controller
+/** Build (or rebuild) the character controller from current PHYS.* values.
+ *  Safe to call live from the calibrator UI. */
+function applyCharacterControllerConfig() {
+  if (!S.physWorld) return;
+  if (S.charCtl) {
+    try { S.physWorld.removeCharacterController(S.charCtl); } catch(e) {}
+    S.charCtl = null;
+  }
   S.charCtl = S.physWorld.createCharacterController(PHYS.CHAR_OFFSET);
   S.charCtl.setUp({ x:0, y:1, z:0 });
   S.charCtl.enableAutostep(PHYS.AUTOSTEP_HEIGHT, PHYS.AUTOSTEP_MIN_WIDTH, true);
   S.charCtl.enableSnapToGround(PHYS.SNAP_DIST);
-  S.charCtl.setMaxSlopeClimbAngle(PHYS.MAX_SLOPE_CLIMB);
-  S.charCtl.setMinSlopeSlideAngle(PHYS.MIN_SLOPE_SLIDE);
-  // Don't slide on small bumps - smooths walking on uneven floors
+  S.charCtl.setMaxSlopeClimbAngle(PHYS.MAX_SLOPE_CLIMB_DEG * Math.PI / 180);
+  S.charCtl.setMinSlopeSlideAngle(PHYS.MIN_SLOPE_SLIDE_DEG * Math.PI / 180);
   S.charCtl.setApplyImpulsesToDynamicBodies(false);
-  // Filter out our own collider on character cast (set when player is created)
 }
 
 function createPlayerBody() {
   if (!S.physWorld) return;
-  // Capsule with total height = playerHeight, radius = playerRadius * 0.55
-  // Rapier capsule param 'halfHeight' is the half-length of the cylindrical *middle* part,
-  // so total height = 2 * (halfHeight + radius)
-  const totalH = CFG.playerHeight;
-  const r = CFG.playerRadius * 0.55;             // 0.22 - fits through normal doors
+  // Tear down any prior body (live rebuild from calibrator)
+  if (S.playerBody) {
+    try { S.physWorld.removeRigidBody(S.playerBody); } catch(e) {}
+    S.playerBody = null; S.playerCol = null;
+  }
+  // Rapier capsule: 'halfHeight' is the cylindrical *middle* part only,
+  // total height = 2 * (halfHeight + radius).
+  const totalH = PHYS.HEIGHT;
+  const r = PHYS.RADIUS;
   const halfH = Math.max(0.05, totalH/2 - r);
   PHYS.capsuleRadius = r;
   PHYS.capsuleHalfHeight = halfH;
 
-  // Place the body so the capsule's *bottom* sits on y=0 by default;
-  // S.pos.y is the eye/top position so the body center is S.pos.y - totalH/2.
+  // Body center is at S.pos.y - totalH/2 so the camera sits at the top of the capsule.
   const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
     .setTranslation(S.pos.x, S.pos.y - totalH/2, S.pos.z);
   S.playerBody = S.physWorld.createRigidBody(bodyDesc);
@@ -659,7 +679,7 @@ function updatePlayer(dt) {
     // S.pos is the camera/eye position; capsule center is at body translation.
     S.pos.x = nx;
     S.pos.z = nz;
-    S.pos.y = ny + CFG.playerHeight/2;  // top of capsule == eye
+    S.pos.y = ny + PHYS.HEIGHT/2;  // top of capsule == eye
 
     // If we were airborne and just landed, play the landing fx
     if (!wasGrounded && S.isGrounded) {
@@ -673,8 +693,8 @@ function updatePlayer(dt) {
 
     // Safety net: if something teleports us below the world, reset
     if (S.pos.y < -50) {
-      S.pos.set(0, CFG.playerHeight, 0); S.vel.set(0,0,0);
-      S.playerBody.setNextKinematicTranslation({ x:0, y:CFG.playerHeight/2, z:0 });
+      S.pos.set(0, PHYS.HEIGHT, 0); S.vel.set(0,0,0);
+      S.playerBody.setNextKinematicTranslation({ x:0, y:PHYS.HEIGHT/2, z:0 });
     }
   } else {
     // Fallback (should not happen in practice): integrate without collision.
@@ -802,6 +822,62 @@ function gameLoop() {
   renderer.clear(); renderer.render(worldScene,worldCamera); renderer.clearDepth(); renderer.render(uiScene,uiCamera);
 }
 
+/* === PHYSICS CALIBRATOR ===
+ * Lets the user fix door/step issues live without code changes.
+ * All sliders write to PHYS, then either rebuild the character controller
+ * (cheap) or rebuild the player body (also cheap). Persisted to localStorage. */
+function setupPhysicsCalibrator() {
+  const btn = document.getElementById('btn-phys-cal');
+  const panel = document.getElementById('phys-cal-ui');
+  if (!btn || !panel) return;
+  btn.hidden = false;
+
+  const KEYS = ['RADIUS','HEIGHT','AUTOSTEP_HEIGHT','AUTOSTEP_MIN_WIDTH','CHAR_OFFSET','SNAP_DIST','MAX_SLOPE_CLIMB_DEG','MIN_SLOPE_SLIDE_DEG'];
+  // Reflect current values into sliders
+  KEYS.forEach(k => {
+    const slider = document.getElementById('phys-' + k);
+    const out = document.getElementById('phys-' + k + '-val');
+    if (slider) slider.value = PHYS[k];
+    if (out) out.innerText = (typeof PHYS[k] === 'number' && !Number.isInteger(PHYS[k])) ? PHYS[k].toFixed(2) : PHYS[k];
+  });
+
+  const apply = () => {
+    KEYS.forEach(k => {
+      const slider = document.getElementById('phys-' + k);
+      const out = document.getElementById('phys-' + k + '-val');
+      if (!slider) return;
+      const v = parseFloat(slider.value);
+      PHYS[k] = v;
+      if (out) out.innerText = (k.endsWith('_DEG')) ? Math.round(v) : v.toFixed(3);
+    });
+    // Save what we care about (skip the runtime-only fields)
+    const toSave = {};
+    KEYS.forEach(k => toSave[k] = PHYS[k]);
+    try { localStorage.setItem('physCal', JSON.stringify(toSave)); } catch(e) {}
+    // Rebuild the controller and the body so changes take effect immediately.
+    applyCharacterControllerConfig();
+    createPlayerBody();
+  };
+  KEYS.forEach(k => {
+    const slider = document.getElementById('phys-' + k);
+    if (slider) slider.addEventListener('input', apply);
+  });
+
+  const toggle = e => { e.preventDefault(); e.stopPropagation(); panel.hidden = !panel.hidden; };
+  btn.addEventListener('click', toggle);
+  btn.addEventListener('touchstart', toggle, { passive:false });
+  document.getElementById('btn-close-phys-cal').addEventListener('click', toggle);
+  document.getElementById('btn-close-phys-cal').addEventListener('touchstart', toggle, { passive:false });
+  document.getElementById('btn-reset-phys-cal').addEventListener('click', () => {
+    Object.assign(PHYS, PHYS_DEFAULTS);
+    KEYS.forEach(k => {
+      const slider = document.getElementById('phys-' + k);
+      if (slider) slider.value = PHYS[k];
+    });
+    apply();
+  });
+}
+
 /* === CALIBRATOR === */
 function setupCalibrator(meta) {
   if(!meta.isCustom) return;
@@ -871,6 +947,7 @@ async function init() {
   }catch(e){showError('Weapon failed: '+e.message); weaponMeta=await loadWeapon(null,false);}
 
   setupCalibrator(weaponMeta);
+  setupPhysicsCalibrator();
   // Pre-warm pools
   for(let i=0;i<30;i++){const m=new THREE.Mesh(GEO.impact,new THREE.MeshBasicMaterial({color:0xffaa44,transparent:true,opacity:0})); m.visible=false; worldScene.add(m); POOL.impacts.push(m);}
 
