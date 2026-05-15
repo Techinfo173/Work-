@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { Capsule } from 'three/addons/math/Capsule.js';
@@ -85,33 +84,27 @@ function buildTextures() {
 }
 
 
-/* === RENDERER SETUP (mobile-optimized) === */
-const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance', precision:'mediump' });
-// Aggressive pixel ratio cap on mobile - this is the #1 perf killer
-renderer.setPixelRatio(isMobile ? 0.6 : Math.min(window.devicePixelRatio, 1.5));
+/* === RENDERER SETUP (performance-optimized) === */
+const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance', precision:'mediump', stencil:false, depth:true });
+// Cap pixel ratio aggressively - #1 perf killer on ALL devices with complex GLBs
+renderer.setPixelRatio(isMobile ? 0.6 : Math.min(window.devicePixelRatio, 1.0));
 renderer.setSize(window.innerWidth, window.innerHeight);
-// Shadows disabled on mobile - massive perf hit
-renderer.shadowMap.enabled = !isMobile;
-if (!isMobile) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Shadows OFF by default - will be re-enabled only for simple default map
+renderer.shadowMap.enabled = false;
+renderer.shadowMap.type = THREE.BasicShadowMap; // cheapest shadow type if re-enabled
 renderer.outputColorSpace=THREE.SRGBColorSpace;
-// Cheap tone mapping on mobile
-renderer.toneMapping = isMobile ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMapping = THREE.NoToneMapping; // skip tone mapping entirely for perf
+renderer.toneMappingExposure = 1.0;
 renderer.autoClear = false;
 document.body.appendChild(renderer.domElement);
 
-const worldScene=new THREE.Scene(); worldScene.background=new THREE.Color(0xcccccc); worldScene.fog=new THREE.FogExp2(0xcccccc,0.0015);
-const worldCamera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.1,300);
+const worldScene=new THREE.Scene(); worldScene.background=new THREE.Color(0xcccccc); worldScene.fog=new THREE.FogExp2(0xcccccc,0.002);
+const worldCamera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.1,150);
 const uiScene=new THREE.Scene();
 const uiCamera=new THREE.PerspectiveCamera(50,window.innerWidth/window.innerHeight,0.01,100);
 
-// Skip PMREM env on mobile - just use ambient. PMREM is expensive at boot
-// and the env map adds shader cost every frame.
-if (!isMobile) {
-  const pmrem=new THREE.PMREMGenerator(renderer);
-  const envTex=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
-  worldScene.environment=envTex; uiScene.environment=envTex; pmrem.dispose();
-}
+// Skip PMREM env entirely for world scene - it forces expensive IBL sampling on every material.
+// The weapon UI scene gets env map setup in init() where async is available.
 
 function onResize() { const w=window.innerWidth,h=window.innerHeight; renderer.setSize(w,h); worldCamera.aspect=w/h; worldCamera.updateProjectionMatrix(); uiCamera.aspect=w/h; uiCamera.updateProjectionMatrix(); }
 window.addEventListener('resize',onResize);
@@ -158,24 +151,35 @@ const _capLine=new THREE.Line3();
 const _triN=new THREE.Vector3(), _triP=new THREE.Vector3(), _capP=new THREE.Vector3();
 
 /* === WORLD BUILD === */
+let hasCustomMap = false; // track if user loaded a custom GLB
+
 function buildLights() {
-  worldScene.add(new THREE.HemisphereLight(0xffffff,0x888888,0.8));
-  const dir=new THREE.DirectionalLight(0xfff9f0,2.5); dir.position.set(50,80,50);
-  // Shadows are off entirely on mobile (renderer.shadowMap.enabled=false)
-  if (!isMobile) {
-    dir.castShadow=true;
-    dir.shadow.mapSize.width=dir.shadow.mapSize.height=2048;
-    dir.shadow.camera.left=-60; dir.shadow.camera.right=60; dir.shadow.camera.top=60; dir.shadow.camera.bottom=-60;
-    dir.shadow.camera.far=150; dir.shadow.bias=-0.001;
-  }
+  worldScene.add(new THREE.HemisphereLight(0xffffff,0x888888,1.2));
+  const dir=new THREE.DirectionalLight(0xfff9f0,2.0); dir.position.set(50,80,50);
   worldScene.add(dir);
-  // No dynamic muzzle light on mobile (PointLight forces a full shader rebuild)
-  if (!isMobile) {
+  // Muzzle light only when no custom map (saves a per-frame point light)
+  if (!hasCustomMap) {
     S.muzzleLight = new THREE.PointLight(0xffaa44,0,8); worldScene.add(S.muzzleLight);
   }
 }
 
 function buildDefaultMap() {
+  // Default map is simple enough for shadows
+  if(!isMobile) {
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.BasicShadowMap;
+    // Add shadow to existing directional light
+    worldScene.traverse(c => {
+      if(c.isDirectionalLight) {
+        c.castShadow = true;
+        c.shadow.mapSize.width = c.shadow.mapSize.height = 1024;
+        c.shadow.camera.left = -40; c.shadow.camera.right = 40;
+        c.shadow.camera.top = 40; c.shadow.camera.bottom = -40;
+        c.shadow.camera.far = 120; c.shadow.bias = -0.002;
+      }
+    });
+  }
+
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200).rotateX(-Math.PI/2), new THREE.MeshStandardMaterial({map:TEX.grid,roughness:0.9,metalness:0.05}));
   if(!isMobile) floor.receiveShadow=true; worldScene.add(floor); S.collisionMeshes.push(floor); S.raycastTargets.push(floor);
 
@@ -210,12 +214,106 @@ function buildDefaultMap() {
 }
 
 async function loadCustomMap(url) {
+  hasCustomMap = true;
   return new Promise((res,rej)=>{
     const loader=new GLTFLoader();
     loader.load(url,gltf=>{
-      const model=gltf.scene; model.updateMatrixWorld(true); const geoms=[];
-      model.traverse(c=>{if(!c.isMesh) return; if(!isMobile){c.castShadow=true; c.receiveShadow=true;} S.raycastTargets.push(c); S.collisionMeshes.push(c); if(c.geometry){const g=c.geometry.clone(); g.applyMatrix4(c.matrixWorld); for(const k in g.attributes) if(k!=='position') g.deleteAttribute(k); geoms.push(g);}});
-      if(geoms.length>0){try{const merged=BufferGeometryUtils.mergeGeometries(geoms,false); if(merged){merged.boundsTree=new MeshBVH(merged); S.bvhMesh=new THREE.Mesh(merged,new THREE.MeshBasicMaterial());}}catch(e){console.warn('BVH merge failed',e);}}
+      const model=gltf.scene; model.updateMatrixWorld(true);
+      const geoms=[];
+      let totalTris = 0;
+      const collisionGeoms = [];
+
+      model.traverse(c=>{
+        if(!c.isMesh) return;
+
+        // === NEVER enable shadows on custom maps - this is the #1 killer ===
+        c.castShadow=false;
+        c.receiveShadow=false;
+
+        // === Disable frustum culling for small meshes (avoids per-frame bounding box checks on complex scenes) ===
+        // Actually keep it on - it helps when there are many meshes
+
+        // === Downgrade materials for performance ===
+        if(c.material) {
+          // Convert to array for uniform handling
+          const mats = Array.isArray(c.material) ? c.material : [c.material];
+          mats.forEach(mat => {
+            // Kill environment map (saves huge IBL sampling cost per fragment)
+            mat.envMap = null;
+            mat.envMapIntensity = 0;
+            // Reduce shader complexity
+            if(mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
+              // Downgrade MeshPhysicalMaterial to Standard behavior
+              if(mat.isMeshPhysicalMaterial) {
+                mat.clearcoat = 0;
+                mat.sheen = 0;
+                mat.transmission = 0;
+                mat.thickness = 0;
+                mat.iridescence = 0;
+              }
+              // Clamp texture sizes - huge textures from Sketchfab murder GPU bandwidth
+              const downscaleTexture = (tex) => {
+                if(!tex || !tex.image) return;
+                const maxSize = isMobile ? 512 : 1024;
+                if(tex.image.width > maxSize || tex.image.height > maxSize) {
+                  // Force GPU to use smaller mip levels
+                  tex.minFilter = THREE.LinearMipmapNearestFilter;
+                  tex.generateMipmaps = true;
+                }
+                // Ensure no anisotropy (expensive)
+                tex.anisotropy = 1;
+              };
+              downscaleTexture(mat.map);
+              downscaleTexture(mat.normalMap);
+              downscaleTexture(mat.roughnessMap);
+              downscaleTexture(mat.metalnessMap);
+              downscaleTexture(mat.aoMap);
+              downscaleTexture(mat.emissiveMap);
+              // Kill normal map if scene is very heavy (normal maps are expensive)
+              if(isMobile) {
+                mat.normalMap = null;
+                mat.aoMap = null;
+              }
+            }
+            // Ensure no double-sided (doubles triangle count for rasterizer)
+            // Actually keep original side setting to avoid visual issues
+            mat.needsUpdate = true;
+          });
+        }
+
+        // Track triangle count
+        if(c.geometry) {
+          const idx = c.geometry.index;
+          const tris = idx ? idx.count / 3 : (c.geometry.attributes.position ? c.geometry.attributes.position.count / 3 : 0);
+          totalTris += tris;
+        }
+
+        // Only add larger meshes to raycast targets (skip tiny decorations)
+        const box = new THREE.Box3().setFromObject(c);
+        const size = box.getSize(_v1);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        if(maxDim > 0.3) {
+          S.raycastTargets.push(c);
+        }
+        // All meshes for collision BVH
+        S.collisionMeshes.push(c);
+        if(c.geometry){
+          const g=c.geometry.clone(); g.applyMatrix4(c.matrixWorld);
+          for(const k in g.attributes) if(k!=='position') g.deleteAttribute(k);
+          collisionGeoms.push(g);
+        }
+      });
+
+      console.log('[Perf] Custom map loaded: ~' + Math.round(totalTris/1000) + 'k triangles, ' + S.collisionMeshes.length + ' meshes');
+
+      // Build BVH from collision geometry
+      if(collisionGeoms.length>0){
+        try{
+          const merged=BufferGeometryUtils.mergeGeometries(collisionGeoms,false);
+          if(merged){merged.boundsTree=new MeshBVH(merged); S.bvhMesh=new THREE.Mesh(merged,new THREE.MeshBasicMaterial());}
+        }catch(e){console.warn('BVH merge failed',e);}
+      }
+
       worldScene.add(model); res(model);
     },undefined,rej);
   });
@@ -415,6 +513,8 @@ bindBtn('btn-ads',()=>toggleAds()); bindBtn('btn-reload',()=>triggerReload()); b
 
 /* === PLAYER UPDATE === */
 const FLOOR_SAMPLES=[{x:0,z:0},{x:CFG.playerRadius*0.7,z:0},{x:-CFG.playerRadius*0.7,z:0},{x:0,z:CFG.playerRadius*0.7},{x:0,z:-CFG.playerRadius*0.7}];
+// Reduced floor samples for custom maps (BVH handles collision)
+const FLOOR_SAMPLES_LITE=[{x:0,z:0},{x:CFG.playerRadius*0.6,z:0},{x:0,z:CFG.playerRadius*0.6}];
 function updatePlayer(dt) {
   // Input
   let mx=0,my=0,sprint=false;
@@ -441,9 +541,25 @@ function updatePlayer(dt) {
     S.pos.x=_capsule.start.x; S.pos.z=_capsule.start.z;
   }
 
-  // Floor
+  // Floor - use BVH raycast when available (much faster than intersectObjects on complex GLBs)
   let floorY=-1000, hit=false;
-  if(S.collisionMeshes.length>0){for(const s of FLOOR_SAMPLES){_rayO.set(S.pos.x+s.x,S.pos.y+1,S.pos.z+s.z); _floorRay.set(_rayO,_down); _floorRay.far=50; const hits=_floorRay.intersectObjects(S.collisionMeshes,false); for(const h of hits){if(h.face&&h.face.normal.y>0.7){const y=h.point.y+CFG.playerHeight; if(y-S.pos.y<0.4&&y>floorY){floorY=y; hit=true;} break;}}}}else{floorY=CFG.playerHeight; hit=true;}
+  const samples = hasCustomMap ? FLOOR_SAMPLES_LITE : FLOOR_SAMPLES;
+  if(S.bvhMesh && S.bvhMesh.geometry.boundsTree) {
+    // BVH floor detection - single geometry, blazing fast
+    for(const s of samples){
+      _rayO.set(S.pos.x+s.x, S.pos.y+1, S.pos.z+s.z);
+      _floorRay.set(_rayO, _down); _floorRay.far=50; _floorRay.firstHitOnly=true;
+      const hits = _floorRay.intersectObject(S.bvhMesh, false);
+      for(const h of hits){
+        if(h.face && h.face.normal.y > 0.7){
+          const y = h.point.y + CFG.playerHeight;
+          if(y - S.pos.y < 0.4 && y > floorY){ floorY=y; hit=true; } break;
+        }
+      }
+    }
+  } else if(S.collisionMeshes.length>0){
+    for(const s of samples){_rayO.set(S.pos.x+s.x,S.pos.y+1,S.pos.z+s.z); _floorRay.set(_rayO,_down); _floorRay.far=50; const hits=_floorRay.intersectObjects(S.collisionMeshes,false); for(const h of hits){if(h.face&&h.face.normal.y>0.7){const y=h.point.y+CFG.playerHeight; if(y-S.pos.y<0.4&&y>floorY){floorY=y; hit=true;} break;}}}
+  } else { floorY=CFG.playerHeight; hit=true; }
   const targetY=hit?floorY:-1000;
 
   if(!S.isGrounded){S.vel.y-=CFG.gravity*dt; S.pos.y+=S.vel.y*dt; if(S.pos.y<=targetY){S.pos.y=targetY; S.vel.y=0; S.isGrounded=true; springs.shake.addImpulse(Math.min(2,Math.abs(S.vel.y)*0.15)); playFootstep();}}
@@ -488,7 +604,13 @@ function updateWeapon(dt,time) {
         // Hitscan
         _hitRay.setFromCamera({x:0,y:0},worldCamera);
         const muzzPos=worldCamera.position.clone().add(_v1.set(0,-0.05,-0.5).applyQuaternion(worldCamera.quaternion));
-        const hits=_hitRay.intersectObjects(S.raycastTargets,true);
+        // Use BVH mesh for hit detection when available (orders of magnitude faster)
+        let hits;
+        if(S.bvhMesh && S.bvhMesh.geometry.boundsTree) {
+          hits = _hitRay.intersectObject(S.bvhMesh, false);
+        } else {
+          hits = _hitRay.intersectObjects(S.raycastTargets, true);
+        }
         if(hits.length>0){const h=hits[0]; spawnImpact(h.point,h.face.normal); spawnTracer(muzzPos,h.point);
           for(const t of S.targets){if(!t.isDown&&h.point.distanceTo(t.pos)<1.5){t.isDown=true; t.resetTimer=3; S.kills++;
             const hm=document.getElementById('hit-marker'); hm.style.transition='none'; hm.style.transform=`translate(-50%,-50%) rotate(${Math.random()*20-10}deg) scale(1.8)`; hm.style.opacity='1'; requestAnimationFrame(()=>{hm.style.transition='all 0.15s ease-out'; hm.style.transform='translate(-50%,-50%) scale(0.8)'; hm.style.opacity='0';});}}}
@@ -544,10 +666,20 @@ function updateHUD() {
 
 /* === GAME LOOP === */
 const clock=new THREE.Clock();
+let _frameCount = 0;
 function gameLoop() {
   requestAnimationFrame(gameLoop);
   const dt=Math.min(clock.getDelta(),0.05), time=clock.getElapsedTime();
-  if(S.running){updatePlayer(dt); updateWeapon(dt,time); updateEffects(dt); updateHUD();}
+  if(S.running){
+    updatePlayer(dt);
+    updateWeapon(dt,time);
+    // Only update effects every other frame on heavy scenes
+    _frameCount++;
+    if(!hasCustomMap || (_frameCount & 1) === 0) {
+      updateEffects(dt * (hasCustomMap ? 2 : 1));
+    }
+    updateHUD();
+  }
   renderer.clear(); renderer.render(worldScene,worldCamera); renderer.clearDepth(); renderer.render(uiScene,uiCamera);
 }
 
@@ -574,12 +706,28 @@ function setupCalibrator(meta) {
 
 /* === BOOTSTRAP === */
 async function init() {
-  buildTextures(); buildLights(); buildWeaponScene();
+  buildTextures();
+
+  // Check if user has a custom map BEFORE building lights (affects muzzle light decision)
+  const [weaponBlob,mapBlob]=await Promise.all([loadBlob('weapon'),loadBlob('map')]);
+  if(mapBlob) hasCustomMap = true;
+
+  buildLights(); buildWeaponScene();
+
+  // Setup env map for weapon UI only (not world scene - too expensive with custom GLBs)
+  if (!isMobile) {
+    try {
+      const { RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js');
+      const pmrem=new THREE.PMREMGenerator(renderer);
+      const envTex=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+      uiScene.environment=envTex; pmrem.dispose();
+    } catch(e) { console.warn('PMREM setup skipped', e); }
+  }
+
   // Bearing strip
   const labels=['N','.','.',  'NE','.','.', 'E','.','.', 'SE','.','.', 'S','.','.', 'SW','.','.', 'W','.','.', 'NW','.','.', 'N'];
   document.getElementById('bearing-strip').innerHTML=labels.map(l=>l==='.'?'<span class="deg">.</span>':`<span>${l}</span>`).join('');
 
-  const [weaponBlob,mapBlob]=await Promise.all([loadBlob('weapon'),loadBlob('map')]);
   if(weaponBlob) document.getElementById('btn-clear-weapon').hidden=false;
   if(mapBlob) document.getElementById('btn-clear-map').hidden=false;
 
