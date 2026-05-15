@@ -119,6 +119,11 @@ const S = {
   isFiring:false, isAds:false, isReloading:false, isInspecting:false, isSprinting:false,
   ammo:CFG.magSize, reserve:CFG.reserveStart, lastFire:0, fireCount:0, kills:0, screenFlash:0,
   weaponWrapper:null, weaponMixer:null, weaponActions:{}, currentAnim:null, defaultWeaponTransform:null,
+  // Animation manager state.
+  // locoTarget   = the locomotion clip that *should* be visible (idle/walk/run)
+  // locoWeight   = the smoothed visible weight of locoTarget; faded to 0 during overlays (fire/reload/inspect)
+  //                so the additive mixer doesn't double-pose the gun ("ghosting").
+  locoTarget:null, locoWeight:1,
   impacts:[], decals:[], shells:[], tracers:[], targets:[], raycastTargets:[], collisionMeshes:[], bvhMesh:null,
   muzzleLight:null,
   // === Rapier physics handles ===
@@ -483,6 +488,7 @@ function buildWeaponScene() {
 async function loadWeapon(url,isCustom) {
   while(weaponGroup.children.length>1) weaponGroup.remove(weaponGroup.children[weaponGroup.children.length-1]);
   S.weaponMixer=null; S.weaponActions={}; S.currentAnim=null;
+  S.locoTarget=null; S.locoWeight=1;
 
   if(!url) { buildProceduralWeapon(); return {animationNames:[],meshes:[],isCustom:false}; }
 
@@ -519,8 +525,26 @@ async function loadWeapon(url,isCustom) {
         if(S.weaponActions.reload){S.weaponActions.reload.setLoop(THREE.LoopOnce); S.weaponActions.reload.clampWhenFinished=true;}
         if(S.weaponActions.emptyReload&&S.weaponActions.emptyReload!==S.weaponActions.reload){S.weaponActions.emptyReload.setLoop(THREE.LoopOnce); S.weaponActions.emptyReload.clampWhenFinished=true;}
         if(S.weaponActions.inspect){S.weaponActions.inspect.setLoop(THREE.LoopOnce); S.weaponActions.inspect.clampWhenFinished=true;}
-        if(S.weaponActions.idle){S.weaponActions.idle.setLoop(THREE.LoopRepeat); S.weaponActions.idle.play(); S.currentAnim=S.weaponActions.idle;}
-        S.weaponMixer.addEventListener('finished',e=>{e.action.stop(); if(e.action===S.weaponActions.inspect) S.isInspecting=false; if(S.currentAnim){S.currentAnim.reset(); S.currentAnim.play();}});
+        // Start *all* locomotion clips playing at weight 0; we cross-fade their weights
+        // from updateWeapon. None of them is ever stopped, so the playhead never resets
+        // mid-loop -> no hard cut when fire/reload ends.
+        ['idle','walk','run'].forEach(k => {
+          const a = S.weaponActions[k];
+          if (a) { a.setLoop(THREE.LoopRepeat); a.setEffectiveWeight(0); a.play(); }
+        });
+        // Default to idle visible
+        if (S.weaponActions.idle) {
+          S.weaponActions.idle.setEffectiveWeight(1);
+          S.locoTarget = S.weaponActions.idle;
+          S.currentAnim = S.weaponActions.idle;
+        }
+        // When an overlay (fire/reload/inspect) finishes, we just stop *that* action.
+        // We do NOT reset the locomotion clip - it has been playing this whole time
+        // at weight 0, and updateWeapon will fade it back up.
+        S.weaponMixer.addEventListener('finished', e => {
+          e.action.stop();
+          if (e.action === S.weaponActions.inspect) S.isInspecting = false;
+        });
         gltf.animations.forEach(a=>animNames.push(a.name));
       }
       res({animationNames:animNames,meshes,isCustom});
@@ -546,7 +570,9 @@ function triggerReload() {
   S.isReloading=true; S.isAds=false; S.isFiring=false;
   const isEmpty=S.ammo===0; const action=isEmpty?S.weaponActions.emptyReload:S.weaponActions.reload;
   let dur=CFG.reloadTime, ammoAt=dur*0.55;
-  if(action){dur=action.getClip().duration; ammoAt=dur*0.55; action.stop(); action.reset(); action.play(); if(S.currentAnim) S.currentAnim.crossFadeTo(action,0.1,false);}
+  // Overlay clips: full weight, restart cleanly. The locomotion layer fades
+  // itself out (see updateWeapon's locoWeight) so we don't double-pose.
+  if(action){dur=action.getClip().duration; ammoAt=dur*0.55; action.stop(); action.reset(); action.setEffectiveWeight(1); action.play();}
   playSlide();
   setTimeout(()=>{const need=CFG.magSize-S.ammo,take=Math.min(need,S.reserve); S.ammo+=take; S.reserve-=take; playClick();}, ammoAt*1000);
   setTimeout(()=>{S.isReloading=false;}, dur*1000);
@@ -555,14 +581,16 @@ function triggerReload() {
 function triggerInspect() {
   if(S.isReloading||S.isAds||S.isFiring||S.isInspecting) return;
   if(!S.weaponActions.inspect) return;
-  S.isInspecting=true; const a=S.weaponActions.inspect; a.stop(); a.reset(); a.play();
-  if(S.currentAnim) S.currentAnim.crossFadeTo(a,0.1,false); playSlide();
+  S.isInspecting=true;
+  const a=S.weaponActions.inspect;
+  a.stop(); a.reset(); a.setEffectiveWeight(1); a.play();
+  playSlide();
 }
 
 function cancelInspect() {
   if(!S.isInspecting) return; S.isInspecting=false;
   if(S.weaponActions.inspect) S.weaponActions.inspect.stop();
-  if(S.currentAnim){S.currentAnim.reset(); S.currentAnim.play();}
+  // Locomotion fades itself back in via updateWeapon - no manual reset needed.
 }
 
 function toggleAds() { if(S.isReloading) return; if(S.isInspecting) cancelInspect(); S.isAds=!S.isAds; }
@@ -748,7 +776,7 @@ function updateWeapon(dt,time) {
     if(time-S.lastFire>=CFG.fireRate){
       if(S.ammo>0){
         S.lastFire=time; S.ammo--; S.fireCount=(S.fireCount||0)+1; playGunshot(); spawnShell();
-        if(S.weaponActions.fire){S.weaponActions.fire.stop(); S.weaponActions.fire.reset(); S.weaponActions.fire.play();}
+        if(S.weaponActions.fire){S.weaponActions.fire.stop(); S.weaponActions.fire.reset(); S.weaponActions.fire.setEffectiveWeight(1); S.weaponActions.fire.play();}
         const rm=S.isAds?0.6:1, acc=1+Math.min(1,(S.fireCount-1)*0.1);
         springs.kick.addImpulse(1.6*rm*acc); springs.rise.addImpulse(2.4*rm*acc); springs.side.addImpulse((Math.random()-0.5)*1.2*rm*acc); springs.twist.addImpulse((Math.random()-0.5)*rm*acc); springs.fov.addImpulse(15*rm);
         muzzleFlash.intensity=8; muzzleGroup.rotation.z=Math.random()*Math.PI; flashMeshes.forEach((m,i)=>{m.material.opacity=0.8+Math.random()*0.2; if(i===3){m.material.opacity=0.6; m.scale.setScalar(0.7+Math.random()*0.4);}else{m.scale.set(1+Math.random()*0.8,0.3+Math.random()*0.2,1);}});
@@ -774,13 +802,49 @@ function updateWeapon(dt,time) {
     }
   }else{S.fireCount=THREE.MathUtils.lerp(S.fireCount||0,0,dt*5);}
 
-  // Locomotion anims
-  if(S.weaponActions.idle&&!S.isFiring&&!S.isReloading&&!S.isInspecting){
-    const spd2D=Math.hypot(S.vel.x,S.vel.z);
-    let target=S.weaponActions.idle;
-    if(spd2D>0.5) target=(S.isSprinting&&S.weaponActions.run)?S.weaponActions.run:(S.weaponActions.walk||S.weaponActions.idle);
-    if(target&&S.currentAnim!==target){target.setLoop(THREE.LoopRepeat); target.reset(); target.play(); if(S.currentAnim) S.currentAnim.crossFadeTo(target,0.2,false); S.currentAnim=target;}
-    if(S.currentAnim===S.weaponActions.walk||S.currentAnim===S.weaponActions.run){const base=S.currentAnim===S.weaponActions.run?CFG.playerSpeed*CFG.sprintMult:CFG.playerSpeed; S.currentAnim.timeScale=THREE.MathUtils.clamp(spd2D/base,0.5,2);}
+  // === Locomotion ===
+  // We keep idle/walk/run *all* playing at weight 0 (set up in loadWeapon) and
+  // cross-fade their weights here. None of them ever gets stop()'d mid-loop,
+  // so the playhead never resets - that's what fixes the "hard cut" when fire
+  // ends. While an overlay (fire/reload/inspect) is active, we also fade the
+  // whole locomotion layer to 0 so the overlay reads cleanly instead of being
+  // *added on top* of walk (the "two ghosts" bug).
+  if (S.weaponMixer && (S.weaponActions.idle || S.weaponActions.walk || S.weaponActions.run)) {
+    const spd2D = Math.hypot(S.vel.x, S.vel.z);
+
+    // Pick the locomotion clip we *want* to be visible right now.
+    let target = S.weaponActions.idle || null;
+    if (spd2D > 0.5) {
+      target = (S.isSprinting && S.weaponActions.run)
+        ? S.weaponActions.run
+        : (S.weaponActions.walk || S.weaponActions.idle);
+    }
+    if (target) S.locoTarget = target;
+    if (S.locoTarget) S.currentAnim = S.locoTarget;
+
+    // Drive the *layer* weight: full when nothing is overlaying, 0 when an overlay plays.
+    const overlayActive = S.isFiring || S.isReloading || S.isInspecting;
+    const layerTarget = overlayActive ? 0 : 1;
+    // 12/sec feels snappy without popping
+    S.locoWeight += (layerTarget - S.locoWeight) * Math.min(1, dt * 12);
+
+    // Cross-fade individual locomotion clips toward locoTarget at speed 8/sec.
+    const k = Math.min(1, dt * 8);
+    ['idle', 'walk', 'run'].forEach(name => {
+      const a = S.weaponActions[name];
+      if (!a) return;
+      const want = (a === S.locoTarget) ? S.locoWeight : 0;
+      const cur = a.getEffectiveWeight();
+      a.setEffectiveWeight(cur + (want - cur) * k);
+    });
+
+    // Match clip speed to player speed (only if locomotion layer is at all visible)
+    if (S.locoTarget === S.weaponActions.walk || S.locoTarget === S.weaponActions.run) {
+      const base = S.locoTarget === S.weaponActions.run
+        ? CFG.playerSpeed * CFG.sprintMult
+        : CFG.playerSpeed;
+      S.locoTarget.timeScale = THREE.MathUtils.clamp(spd2D / base, 0.5, 2);
+    }
   }
 
   // Muzzle decay
