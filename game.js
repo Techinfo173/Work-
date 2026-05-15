@@ -11,7 +11,7 @@ THREE.Mesh.prototype.raycast = acceleratedRaycast;
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 const CFG = {
   playerSpeed: 7, sprintMult: 1.35, adsSpeedMult: 0.4, fireSpeedMult: 0.5,
-  playerRadius: 0.4, playerHeight: 2.2, jumpVel: 8, gravity: 25,
+  playerRadius: 0.3, playerHeight: 1.75, stepHeight: 0.5, jumpVel: 8, gravity: 25,
   fovHip: 70, fovAds: 45, sens: 0.0028, adsSensMult: 0.5,
   fireRate: 0.09, magSize: 30, reserveStart: 120, reloadTime: 1.8,
   gunHipPos: new THREE.Vector3(0.26, -0.36, -0.25),
@@ -98,7 +98,7 @@ renderer.toneMappingExposure = 1.0;
 renderer.autoClear = false;
 document.body.appendChild(renderer.domElement);
 
-const worldScene=new THREE.Scene(); worldScene.background=new THREE.Color(0xcccccc); worldScene.fog=new THREE.FogExp2(0xcccccc,0.002);
+const worldScene=new THREE.Scene(); worldScene.background=new THREE.Color(0x6b7a8a); worldScene.fog=new THREE.FogExp2(0x6b7a8a,0.0015);
 const worldCamera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.1,150);
 const uiScene=new THREE.Scene();
 const uiCamera=new THREE.PerspectiveCamera(50,window.innerWidth/window.innerHeight,0.01,100);
@@ -269,9 +269,9 @@ async function loadCustomMap(url) {
               downscaleTexture(mat.metalnessMap);
               downscaleTexture(mat.aoMap);
               downscaleTexture(mat.emissiveMap);
-              // Kill normal map if scene is very heavy (normal maps are expensive)
+              // Kill AO map on mobile (extra texture sample with little visual gain).
+              // Keep normal maps on - they're cheap and the difference in visual quality is huge.
               if(isMobile) {
-                mat.normalMap = null;
                 mat.aoMap = null;
               }
             }
@@ -532,33 +532,69 @@ function updatePlayer(dt) {
   S.vel.x+=(_move.x*spd-S.vel.x)*10*dt; S.vel.z+=(_move.z*spd-S.vel.z)*10*dt;
   S.pos.x+=S.vel.x*dt; S.pos.z+=S.vel.z*dt;
 
-  // BVH slide
+  // BVH slide - capsule cylinder spans from (feet + stepHeight) to (eye-level)
+  // Anything below stepHeight is invisible to the capsule and resolved by the floor raycast (auto step-up)
   if(S.bvhMesh&&S.bvhMesh.geometry.boundsTree){
-    const r=CFG.playerRadius*0.75, h=CFG.playerHeight;
-    _capsule.radius=r; _capsule.start.set(S.pos.x,S.pos.y-h+r+0.2,S.pos.z); _capsule.end.set(S.pos.x,S.pos.y-r,S.pos.z);
-    for(let iter=0;iter<3;iter++){_capLine.start.copy(_capsule.start); _capLine.end.copy(_capsule.end);
-      S.bvhMesh.geometry.boundsTree.shapecast({intersectsBounds:box=>_capsule.intersectsBox(box), intersectsTriangle:tri=>{tri.getNormal(_triN); if(Math.abs(_triN.y)>0.7) return false; const dist=tri.closestPointToSegment(_capLine,_triP,_capP); if(dist<_capsule.radius){const depth=_capsule.radius-dist; const dir=_capP.sub(_triP); dir.y=0; if(dir.lengthSq()>0){dir.normalize(); _capsule.translate(dir.multiplyScalar(depth));}}}});}
+    const r=CFG.playerRadius;
+    const feet=S.pos.y-CFG.playerHeight;
+    _capsule.radius=r;
+    // start = lower sphere center (just above step threshold)
+    _capsule.start.set(S.pos.x, feet+CFG.stepHeight+r, S.pos.z);
+    // end = upper sphere center (just below eye level so head fits through ~1.9m doorways)
+    _capsule.end.set(S.pos.x, S.pos.y-r*0.5, S.pos.z);
+    for(let iter=0;iter<5;iter++){
+      _capLine.start.copy(_capsule.start); _capLine.end.copy(_capsule.end);
+      let collided=false;
+      S.bvhMesh.geometry.boundsTree.shapecast({
+        intersectsBounds:box=>_capsule.intersectsBox(box),
+        intersectsTriangle:tri=>{
+          tri.getNormal(_triN);
+          // Skip near-flat surfaces (floors/ceilings); they're handled by floor raycast & gravity
+          if(Math.abs(_triN.y)>0.7) return false;
+          const dist=tri.closestPointToSegment(_capLine,_triP,_capP);
+          if(dist<_capsule.radius){
+            const depth=_capsule.radius-dist+0.001;
+            const dir=_capP.sub(_triP); dir.y=0;
+            if(dir.lengthSq()>1e-6){ dir.normalize(); _capsule.translate(dir.multiplyScalar(depth)); collided=true; }
+          }
+        }
+      });
+      if(!collided) break;
+    }
     S.pos.x=_capsule.start.x; S.pos.z=_capsule.start.z;
   }
 
   // Floor - use BVH raycast when available (much faster than intersectObjects on complex GLBs)
+  // Ray origin starts above stepHeight so we can detect step tops the player should auto-climb onto
   let floorY=-1000, hit=false;
   const samples = hasCustomMap ? FLOOR_SAMPLES_LITE : FLOOR_SAMPLES;
+  const rayStartY = S.pos.y - CFG.playerHeight + CFG.stepHeight + 0.1; // ankle-ish, above any step we want to climb
+  const stepUpAllowance = S.isGrounded ? CFG.stepHeight : 0.1; // when airborne, only snap to floor we're falling onto
   if(S.bvhMesh && S.bvhMesh.geometry.boundsTree) {
     // BVH floor detection - single geometry, blazing fast
     for(const s of samples){
-      _rayO.set(S.pos.x+s.x, S.pos.y+1, S.pos.z+s.z);
+      _rayO.set(S.pos.x+s.x, rayStartY, S.pos.z+s.z);
       _floorRay.set(_rayO, _down); _floorRay.far=50; _floorRay.firstHitOnly=true;
       const hits = _floorRay.intersectObject(S.bvhMesh, false);
       for(const h of hits){
         if(h.face && h.face.normal.y > 0.7){
           const y = h.point.y + CFG.playerHeight;
-          if(y - S.pos.y < 0.4 && y > floorY){ floorY=y; hit=true; } break;
+          if(y - S.pos.y < stepUpAllowance && y > floorY){ floorY=y; hit=true; } break;
         }
       }
     }
   } else if(S.collisionMeshes.length>0){
-    for(const s of samples){_rayO.set(S.pos.x+s.x,S.pos.y+1,S.pos.z+s.z); _floorRay.set(_rayO,_down); _floorRay.far=50; const hits=_floorRay.intersectObjects(S.collisionMeshes,false); for(const h of hits){if(h.face&&h.face.normal.y>0.7){const y=h.point.y+CFG.playerHeight; if(y-S.pos.y<0.4&&y>floorY){floorY=y; hit=true;} break;}}}
+    for(const s of samples){
+      _rayO.set(S.pos.x+s.x, rayStartY, S.pos.z+s.z);
+      _floorRay.set(_rayO,_down); _floorRay.far=50;
+      const hits=_floorRay.intersectObjects(S.collisionMeshes,false);
+      for(const h of hits){
+        if(h.face&&h.face.normal.y>0.7){
+          const y=h.point.y+CFG.playerHeight;
+          if(y-S.pos.y < stepUpAllowance && y>floorY){floorY=y; hit=true;} break;
+        }
+      }
+    }
   } else { floorY=CFG.playerHeight; hit=true; }
   const targetY=hit?floorY:-1000;
 
