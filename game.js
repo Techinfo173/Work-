@@ -52,19 +52,8 @@ const TEX = {};
 function canvas(sz) { const c=document.createElement('canvas'); c.width=c.height=sz; return [c,c.getContext('2d')]; }
 function makeTex(c,rep=1) { const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace; if(rep!==1) t.repeat.set(rep,rep); return t; }
 function buildTextures() {
-  const gridSize = isMobile ? 256 : 1024;
   const flashSize = isMobile ? 128 : 256;
   let c,ctx;
-  // Grid floor (smaller on mobile)
-  [c,ctx]=canvas(gridSize); ctx.fillStyle='#3a3a3a'; ctx.fillRect(0,0,gridSize,gridSize);
-  const speckCount = isMobile ? 500 : 4000;
-  for(let i=0;i<speckCount;i++){ctx.fillStyle=Math.random()>0.5?'rgba(0,0,0,0.2)':'rgba(255,255,255,0.05)'; ctx.fillRect(Math.random()*gridSize,Math.random()*gridSize,3,3);}
-  ctx.strokeStyle='rgba(255,170,0,0.3)'; ctx.lineWidth=3; const step = gridSize/8;
-  for(let i=0;i<=gridSize;i+=step){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,gridSize);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(gridSize,i);ctx.stroke();}
-  TEX.grid=makeTex(c,100);
-  // Sandbag (small, fine)
-  [c,ctx]=canvas(128); ctx.fillStyle='#8b8b6a'; ctx.fillRect(0,0,128,128); ctx.strokeStyle='rgba(0,0,0,0.1)'; ctx.lineWidth=1; for(let i=0;i<128;i+=4){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,128);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(128,i);ctx.stroke();}
-  TEX.sandbag=makeTex(c);
   // Muzzle flash
   [c,ctx]=canvas(flashSize); ctx.fillStyle='#000'; ctx.fillRect(0,0,flashSize,flashSize); ctx.globalCompositeOperation='lighter';
   const cx = flashSize/8, cy = flashSize/2;
@@ -118,8 +107,7 @@ const S = {
   isFiring:false, isAds:false, isReloading:false, isInspecting:false, isSprinting:false,
   ammo:CFG.magSize, reserve:CFG.reserveStart, lastFire:0, fireCount:0, kills:0, screenFlash:0,
   weaponWrapper:null, weaponMixer:null, weaponActions:{}, currentAnim:null, defaultWeaponTransform:null,
-  impacts:[], decals:[], shells:[], tracers:[], targets:[], raycastTargets:[], collisionMeshes:[], bvhMesh:null,
-  muzzleLight:null
+  impacts:[], decals:[], shells:[], tracers:[], raycastTargets:[], collisionMeshes:[], bvhMesh:null
 };
 
 /* === SPRINGS === */
@@ -151,70 +139,18 @@ const _capLine=new THREE.Line3();
 const _triN=new THREE.Vector3(), _triP=new THREE.Vector3(), _capP=new THREE.Vector3();
 
 /* === WORLD BUILD === */
-let hasCustomMap = false; // track if user loaded a custom GLB
-
 function buildLights() {
   worldScene.add(new THREE.HemisphereLight(0xffffff,0x888888,1.2));
   const dir=new THREE.DirectionalLight(0xfff9f0,2.0); dir.position.set(50,80,50);
   worldScene.add(dir);
-  // Muzzle light only when no custom map (saves a per-frame point light)
-  if (!hasCustomMap) {
-    S.muzzleLight = new THREE.PointLight(0xffaa44,0,8); worldScene.add(S.muzzleLight);
-  }
 }
 
 function buildDefaultMap() {
-  // Default map is simple enough for shadows
-  if(!isMobile) {
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.BasicShadowMap;
-    // Add shadow to existing directional light
-    worldScene.traverse(c => {
-      if(c.isDirectionalLight) {
-        c.castShadow = true;
-        c.shadow.mapSize.width = c.shadow.mapSize.height = 1024;
-        c.shadow.camera.left = -40; c.shadow.camera.right = 40;
-        c.shadow.camera.top = 40; c.shadow.camera.bottom = -40;
-        c.shadow.camera.far = 120; c.shadow.bias = -0.002;
-      }
-    });
-  }
-
-  const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200).rotateX(-Math.PI/2), new THREE.MeshStandardMaterial({map:TEX.grid,roughness:0.9,metalness:0.05}));
-  if(!isMobile) floor.receiveShadow=true; worldScene.add(floor); S.collisionMeshes.push(floor); S.raycastTargets.push(floor);
-
-  const bMat=new THREE.MeshStandardMaterial({map:TEX.sandbag,color:0x9999aa,roughness:0.85});
-  const addBlock=(w,h,d,x,z,ry=0)=>{const g=new THREE.BoxGeometry(w,h,d); g.translate(0,h/2,0); const m=new THREE.Mesh(g,bMat); m.position.set(x,0,z); m.rotation.y=ry; if(!isMobile){m.castShadow=true; m.receiveShadow=true;} worldScene.add(m); S.collisionMeshes.push(m); S.raycastTargets.push(m);};
-
-  const woodMat=new THREE.MeshStandardMaterial({color:0x8b5a2b,roughness:0.9});
-  const metalMat=new THREE.MeshStandardMaterial({color:0x444444,metalness:0.8,roughness:0.2});
-  const faceMat=new THREE.MeshStandardMaterial({color:0xff3333,roughness:0.5});
-
-  const addTarget=(x,z,ry=0)=>{
-    const grp=new THREE.Group(); grp.position.set(x,0,z); grp.rotation.y=ry;
-    const post=new THREE.Mesh(new THREE.BoxGeometry(0.2,1.5,0.2),woodMat); post.position.y=0.75; if(!isMobile)post.castShadow=true; grp.add(post);
-    const pivot=new THREE.Group(); pivot.position.y=1.4; grp.add(pivot);
-    const body=new THREE.Mesh(new THREE.BoxGeometry(1.2,1.2,0.1),metalMat); body.position.y=0.6; if(!isMobile)body.castShadow=true; pivot.add(body);
-    const face=new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.12),faceMat); face.position.y=0.6; pivot.add(face);
-    worldScene.add(grp); S.raycastTargets.push(body,face,post);
-    S.targets.push({pos:new THREE.Vector3(x,2.0,z),pivot,isDown:false,resetTimer:0});
-  };
-
-  addBlock(4,2,1,0,-10); addBlock(1,2,4,-4,-12); addBlock(1,2,4,4,-12);
-  addTarget(2,-14); addTarget(-2,-14); addTarget(0,-28); addTarget(-8,-23,Math.PI/4); addTarget(8,-23,-Math.PI/4);
-  addBlock(10,4,1,0,-30); addBlock(4,4,1,-12,-25,Math.PI/4); addBlock(4,4,1,12,-25,-Math.PI/4);
-  // Fewer scatter blocks on mobile
-  const scatter = isMobile ? 10 : 25;
-  for(let i=0;i<scatter;i++){const w=1+Math.random()*3,h=1+Math.random()*2,d=1+Math.random()*3,x=(Math.random()-0.5)*70,z=(Math.random()-0.5)*70; if(Math.abs(x)<5&&Math.abs(z)<5) continue; addBlock(w,h,d,x,z,Math.random()*Math.PI);}
-
-  // Build BVH
-  const geoms=[];
-  S.collisionMeshes.forEach(m=>{if(!m.geometry) return; m.updateMatrixWorld(true); const g=m.geometry.clone(); g.applyMatrix4(m.matrixWorld); for(const k in g.attributes) if(k!=='position') g.deleteAttribute(k); geoms.push(g);});
-  if(geoms.length>0){try{const merged=BufferGeometryUtils.mergeGeometries(geoms,false); if(merged){merged.boundsTree=new MeshBVH(merged); S.bvhMesh=new THREE.Mesh(merged,new THREE.MeshBasicMaterial());}}catch(e){console.warn('BVH merge failed',e);}}
+  // Empty fallback - shows just the sky/fog if no map is loaded.
+  // The user is expected to upload a custom GLB map via the start screen.
 }
 
 async function loadCustomMap(url) {
-  hasCustomMap = true;
   return new Promise((res,rej)=>{
     const loader=new GLTFLoader();
     loader.load(url,gltf=>{
@@ -480,7 +416,6 @@ function updateEffects(dt) {
   for(let i=S.decals.length-1;i>=0;i--){const d=S.decals[i]; d.life-=dt; if(d.life<2) d.mesh.material.opacity=(d.life/2)*0.9; if(d.life<=0){d.mesh.visible=false; POOL.decals.push(d.mesh); S.decals.splice(i,1);}}
   for(let i=S.shells.length-1;i>=0;i--){const s=S.shells[i]; s.life-=dt; s.vel.y-=dt*0.2; s.mesh.position.addScaledVector(s.vel,dt*60); if(s.mesh.position.y<=0.02&&s.vel.y<0){s.mesh.position.y=0.02; s.vel.y*=-0.5; if(Math.abs(s.vel.y)>0.01) playShellBounce(s.life/2.5); s.vel.x*=0.6; s.vel.z*=0.6; s.rotVel.multiplyScalar(0.5);} s.mesh.rotation.x+=s.rotVel.x*dt; s.mesh.rotation.y+=s.rotVel.y*dt; s.mesh.rotation.z+=s.rotVel.z*dt; if(s.life<0.5) s.mesh.material.opacity=Math.max(0,s.life/0.5); if(s.life<=0){s.mesh.visible=false; POOL.shells.push(s.mesh); S.shells.splice(i,1);}}
   for(let i=S.tracers.length-1;i>=0;i--){const t=S.tracers[i]; t.life-=dt; if(t.life<=0){t.mesh.visible=false; POOL.tracers.push(t.mesh); S.tracers.splice(i,1);}}
-  for(const t of S.targets){const rot=t.isDown?-Math.PI/2.2:0; t.pivot.rotation.x=THREE.MathUtils.lerp(t.pivot.rotation.x,rot,dt*10); if(t.isDown){t.resetTimer-=dt; if(t.resetTimer<=0) t.isDown=false;}}
 }
 
 /* === INPUT === */
@@ -512,9 +447,7 @@ bindBtn('btn-fire',()=>{if(S.isInspecting) cancelInspect(); S.isFiring=true;},()
 bindBtn('btn-ads',()=>toggleAds()); bindBtn('btn-reload',()=>triggerReload()); bindBtn('btn-jump',()=>triggerJump()); bindBtn('btn-inspect',()=>triggerInspect());
 
 /* === PLAYER UPDATE === */
-const FLOOR_SAMPLES=[{x:0,z:0},{x:CFG.playerRadius*0.7,z:0},{x:-CFG.playerRadius*0.7,z:0},{x:0,z:CFG.playerRadius*0.7},{x:0,z:-CFG.playerRadius*0.7}];
-// Reduced floor samples for custom maps (BVH handles collision)
-const FLOOR_SAMPLES_LITE=[{x:0,z:0},{x:CFG.playerRadius*0.6,z:0},{x:0,z:CFG.playerRadius*0.6}];
+const FLOOR_SAMPLES=[{x:0,z:0},{x:CFG.playerRadius*0.6,z:0},{x:0,z:CFG.playerRadius*0.6}];
 function updatePlayer(dt) {
   // Input
   let mx=0,my=0,sprint=false;
@@ -567,12 +500,11 @@ function updatePlayer(dt) {
   // Floor - use BVH raycast when available (much faster than intersectObjects on complex GLBs)
   // Ray origin starts above stepHeight so we can detect step tops the player should auto-climb onto
   let floorY=-1000, hit=false;
-  const samples = hasCustomMap ? FLOOR_SAMPLES_LITE : FLOOR_SAMPLES;
   const rayStartY = S.pos.y - CFG.playerHeight + CFG.stepHeight + 0.1; // ankle-ish, above any step we want to climb
   const stepUpAllowance = S.isGrounded ? CFG.stepHeight : 0.1; // when airborne, only snap to floor we're falling onto
   if(S.bvhMesh && S.bvhMesh.geometry.boundsTree) {
     // BVH floor detection - single geometry, blazing fast
-    for(const s of samples){
+    for(const s of FLOOR_SAMPLES){
       _rayO.set(S.pos.x+s.x, rayStartY, S.pos.z+s.z);
       _floorRay.set(_rayO, _down); _floorRay.far=50; _floorRay.firstHitOnly=true;
       const hits = _floorRay.intersectObject(S.bvhMesh, false);
@@ -580,18 +512,6 @@ function updatePlayer(dt) {
         if(h.face && h.face.normal.y > 0.7){
           const y = h.point.y + CFG.playerHeight;
           if(y - S.pos.y < stepUpAllowance && y > floorY){ floorY=y; hit=true; } break;
-        }
-      }
-    }
-  } else if(S.collisionMeshes.length>0){
-    for(const s of samples){
-      _rayO.set(S.pos.x+s.x, rayStartY, S.pos.z+s.z);
-      _floorRay.set(_rayO,_down); _floorRay.far=50;
-      const hits=_floorRay.intersectObjects(S.collisionMeshes,false);
-      for(const h of hits){
-        if(h.face&&h.face.normal.y>0.7){
-          const y=h.point.y+CFG.playerHeight;
-          if(y-S.pos.y < stepUpAllowance && y>floorY){floorY=y; hit=true;} break;
         }
       }
     }
@@ -647,11 +567,8 @@ function updateWeapon(dt,time) {
         } else {
           hits = _hitRay.intersectObjects(S.raycastTargets, true);
         }
-        if(hits.length>0){const h=hits[0]; spawnImpact(h.point,h.face.normal); spawnTracer(muzzPos,h.point);
-          for(const t of S.targets){if(!t.isDown&&h.point.distanceTo(t.pos)<1.5){t.isDown=true; t.resetTimer=3; S.kills++;
-            const hm=document.getElementById('hit-marker'); hm.style.transition='none'; hm.style.transform=`translate(-50%,-50%) rotate(${Math.random()*20-10}deg) scale(1.8)`; hm.style.opacity='1'; requestAnimationFrame(()=>{hm.style.transition='all 0.15s ease-out'; hm.style.transform='translate(-50%,-50%) scale(0.8)'; hm.style.opacity='0';});}}}
+        if(hits.length>0){const h=hits[0]; spawnImpact(h.point,h.face.normal); spawnTracer(muzzPos,h.point);}
         else{spawnTracer(muzzPos,muzzPos.clone().add(_hitRay.ray.direction.clone().multiplyScalar(100)));}
-        if(S.muzzleLight){S.muzzleLight.intensity=4; const fw=_v1.set(0,0,-1).applyQuaternion(worldCamera.quaternion); S.muzzleLight.position.copy(worldCamera.position).add(fw);}
         if(S.ammo===0&&S.reserve>0) triggerReload();
       }else if(time-S.lastFire>0.3){S.lastFire=time; S.fireCount=0; playClick();}
     }
@@ -669,7 +586,6 @@ function updateWeapon(dt,time) {
   // Muzzle decay
   muzzleFlash.intensity=Math.max(0,muzzleFlash.intensity-dt*100);
   flashMeshes.forEach(m=>{m.material.opacity=Math.max(0,m.material.opacity-dt*45); m.scale.multiplyScalar(1+dt*10);});
-  if(S.muzzleLight) S.muzzleLight.intensity=Math.max(0,S.muzzleLight.intensity-dt*1500);
   S.screenFlash=Math.max(0,S.screenFlash-dt*10);
 
   // Weapon pose
@@ -709,11 +625,9 @@ function gameLoop() {
   if(S.running){
     updatePlayer(dt);
     updateWeapon(dt,time);
-    // Only update effects every other frame on heavy scenes
+    // Update effects every other frame to keep cost down on heavy custom maps
     _frameCount++;
-    if(!hasCustomMap || (_frameCount & 1) === 0) {
-      updateEffects(dt * (hasCustomMap ? 2 : 1));
-    }
+    if((_frameCount & 1) === 0) updateEffects(dt * 2);
     updateHUD();
   }
   renderer.clear(); renderer.render(worldScene,worldCamera); renderer.clearDepth(); renderer.render(uiScene,uiCamera);
@@ -744,9 +658,7 @@ function setupCalibrator(meta) {
 async function init() {
   buildTextures();
 
-  // Check if user has a custom map BEFORE building lights (affects muzzle light decision)
   const [weaponBlob,mapBlob]=await Promise.all([loadBlob('weapon'),loadBlob('map')]);
-  if(mapBlob) hasCustomMap = true;
 
   buildLights(); buildWeaponScene();
 
