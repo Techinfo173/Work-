@@ -69,6 +69,13 @@ canvas { display:block; position:absolute; inset:0; width:100%; height:100%; z-i
 
 #btn-fullscreen { position:absolute; top:20px; right:20px; z-index:100; width:44px; height:44px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:4px; display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; backdrop-filter:blur(4px); }
 #btn-calibrator { position:absolute; top:20px; right:80px; z-index:100; width:44px; height:44px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:4px; display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; backdrop-filter:blur(4px); font-family:monospace; font-weight:bold; font-size:11px; pointer-events:auto; }
+#btn-phys-cal { position:absolute; top:20px; right:140px; z-index:100; width:44px; height:44px; background:rgba(0,0,0,0.5); border:1px solid rgba(120,200,255,0.4); border-radius:4px; display:flex; align-items:center; justify-content:center; color:#9cf; cursor:pointer; backdrop-filter:blur(4px); font-family:monospace; font-weight:bold; font-size:11px; pointer-events:auto; }
+#physics-ui { position:fixed; right:20px; top:80px; background:rgba(0,0,0,0.85); border:1px solid #6cf; padding:15px; color:#fff; z-index:10002; font-family:monospace; width:280px; border-radius:4px; pointer-events:auto; max-height:85vh; overflow-y:auto; }
+#physics-ui h3 { margin:0 0 10px; font-size:14px; text-align:center; color:#6cf; border-bottom:1px solid #555; padding-bottom:6px; }
+#physics-ui input[type=range] { width:100%; margin-bottom:8px; }
+#physics-ui .help { font-size:10px; color:#789; margin:8px 0 12px; line-height:1.4; }
+#btn-reset-phys { background:rgba(255,50,50,0.5); border:1px solid #f00; }
+#btn-close-phys { background:#444; border:1px solid #666; flex:2; }
 
 #calibrator-ui { position:fixed; right:20px; top:80px; background:rgba(0,0,0,0.85); border:1px solid var(--accent); padding:15px; color:#fff; z-index:10002; font-family:monospace; width:280px; border-radius:4px; pointer-events:auto; max-height:85vh; overflow-y:auto; }
 #calibrator-ui h3 { margin:0 0 10px; font-size:14px; text-align:center; color:var(--accent); border-bottom:1px solid #555; padding-bottom:6px; }
@@ -126,6 +133,29 @@ canvas { display:block; position:absolute; inset:0; width:100%; height:100%; z-i
 
 <button id="btn-fullscreen" hidden><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
 <button id="btn-calibrator" hidden>CAL</button>
+<button id="btn-phys-cal" hidden>PHY</button>
+
+<div id="physics-ui" hidden>
+  <h3>PHYSICS CALIBRATOR</h3>
+  <div class="help">If a door blocks you, lower <b>Body Radius</b>. If a step won't let you walk on it, raise <b>Step Height</b>. Changes apply live and persist.</div>
+  <div class="cal-row"><label>Body Radius</label><span id="phys-radius-val">0.18</span></div>
+  <input type="range" id="phys-radius" min="0.10" max="0.40" step="0.01" value="0.18">
+  <div class="cal-row"><label>Body Height</label><span id="phys-height-val">2.20</span></div>
+  <input type="range" id="phys-height" min="1.40" max="2.50" step="0.05" value="2.20">
+  <div class="cal-row"><label>Step Height</label><span id="phys-step-val">1.00</span></div>
+  <input type="range" id="phys-step" min="0.10" max="2.00" step="0.05" value="1.00">
+  <div class="cal-row"><label>Step Min Width</label><span id="phys-stepw-val">0.05</span></div>
+  <input type="range" id="phys-stepw" min="0.01" max="0.50" step="0.01" value="0.05">
+  <div class="cal-row"><label>Snap to Ground</label><span id="phys-snap-val">0.50</span></div>
+  <input type="range" id="phys-snap" min="0.0" max="1.50" step="0.05" value="0.50">
+  <div class="cal-row"><label>Skin Width</label><span id="phys-skin-val">0.020</span></div>
+  <input type="range" id="phys-skin" min="0.005" max="0.10" step="0.005" value="0.020">
+  <div class="cal-row"><label>Max Climb Slope</label><span id="phys-climb-val">50&deg;</span></div>
+  <input type="range" id="phys-climb" min="20" max="80" step="1" value="50">
+  <div class="cal-row"><label>Min Slide Slope</label><span id="phys-slide-val">65&deg;</span></div>
+  <input type="range" id="phys-slide" min="30" max="89" step="1" value="65">
+  <div class="cal-buttons"><button id="btn-reset-phys">RESET</button><button id="btn-close-phys">DONE</button></div>
+</div>
 
 <div id="calibrator-ui" hidden>
   <h3>WEAPON CALIBRATOR</h3>
