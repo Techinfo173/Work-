@@ -134,20 +134,37 @@ const S = {
  * - Movement: KinematicCharacterController.computeColliderMovement(...)
  *   handles slide, autostep, slope limits, snap-to-ground, all natively.
  */
+// PHYS holds the LIVE physics parameters. The calibrator panel writes to these
+// fields and the next physics step picks them up. Defaults are deliberately
+// permissive - tuned for "complex maps with door thresholds and tall steps",
+// not for a polite default arena.
 const PHYS = {
-  // Tunables. These are what actually fix doors/steps; they're explicit on purpose.
-  CHAR_OFFSET: 0.05,        // skin width (Rapier needs > 0)
-  AUTOSTEP_HEIGHT: 0.5,     // climb anything up to ~knee-high without thinking
-  AUTOSTEP_MIN_WIDTH: 0.2,  // step tread must be >= 20cm to be valid
-  SNAP_DIST: 0.5,           // stick to ground within 0.5m to avoid bouncing off ledges going down
-  MAX_SLOPE_CLIMB: Math.PI/4,    // 45 deg
-  MIN_SLOPE_SLIDE: Math.PI/3,    // 60 deg - steeper than this and you slide
+  // Player capsule shape (live-tunable)
+  bodyRadius: 0.18,         // capsule radius. <= ~0.20 fits through any normal door.
+  bodyHeight: 2.2,          // total capsule height (top of head to feet)
 
-  capsuleHalfHeight: 0,     // set when player body is created
+  // Character controller
+  CHAR_OFFSET: 0.02,        // skin width. Smaller = squeeze through tighter gaps.
+  AUTOSTEP_HEIGHT: 1.0,     // max step the controller climbs without you jumping.
+                            //   1.0m handles waist-high obstacles, doorway thresholds,
+                            //   and most stair-of-doom cases out of the box.
+  AUTOSTEP_MIN_WIDTH: 0.05, // tread must be >= 5cm to count as a step. Very permissive.
+  SNAP_DIST: 0.5,           // stay glued to ground within 0.5m so we don't pop off ledges.
+  MAX_SLOPE_CLIMB_DEG: 50,  // climb up to 50 degree slopes
+  MIN_SLOPE_SLIDE_DEG: 65,  // start sliding above 65 degrees
+
+  // Bookkeeping (set when player body is created)
+  capsuleHalfHeight: 0,
   capsuleRadius: 0,
   // Reused per-frame to avoid allocations
   desired: { x:0, y:0, z:0 }
 };
+
+// Persisted overrides from previous session
+try {
+  const saved = JSON.parse(localStorage.getItem('physCal') || 'null');
+  if (saved && typeof saved === 'object') Object.assign(PHYS, saved);
+} catch(e) { /* ignore corrupt storage */ }
 
 async function initPhysics() {
   await RAPIER.init();
@@ -156,30 +173,41 @@ async function initPhysics() {
   // Slightly larger timestep tolerance is fine for an FPS - we step at frame rate
   S.physWorld.timestep = 1/60;
 
-  // Character controller
+  applyControllerSettings();
+}
+
+// (Re)build the character controller from the live PHYS values.
+// Safe to call again whenever the calibrator changes any controller-level setting.
+function applyControllerSettings() {
+  if (!S.physWorld) return;
+  // Recreate the controller so all settings (especially offset) take effect.
+  if (S.charCtl) { try { S.physWorld.removeCharacterController(S.charCtl); } catch(e){} S.charCtl = null; }
   S.charCtl = S.physWorld.createCharacterController(PHYS.CHAR_OFFSET);
   S.charCtl.setUp({ x:0, y:1, z:0 });
   S.charCtl.enableAutostep(PHYS.AUTOSTEP_HEIGHT, PHYS.AUTOSTEP_MIN_WIDTH, true);
   S.charCtl.enableSnapToGround(PHYS.SNAP_DIST);
-  S.charCtl.setMaxSlopeClimbAngle(PHYS.MAX_SLOPE_CLIMB);
-  S.charCtl.setMinSlopeSlideAngle(PHYS.MIN_SLOPE_SLIDE);
-  // Don't slide on small bumps - smooths walking on uneven floors
+  S.charCtl.setMaxSlopeClimbAngle(PHYS.MAX_SLOPE_CLIMB_DEG * Math.PI / 180);
+  S.charCtl.setMinSlopeSlideAngle(PHYS.MIN_SLOPE_SLIDE_DEG * Math.PI / 180);
+  // Don't push dynamic objects around (we have none, and it's cheaper)
   S.charCtl.setApplyImpulsesToDynamicBodies(false);
-  // Filter out our own collider on character cast (set when player is created)
 }
 
 function createPlayerBody() {
   if (!S.physWorld) return;
-  // Capsule with total height = playerHeight, radius = playerRadius * 0.55
+  // Tear down any existing body (so the calibrator can rebuild on the fly)
+  if (S.playerCol) { try { S.physWorld.removeCollider(S.playerCol, false); } catch(e){} S.playerCol = null; }
+  if (S.playerBody) { try { S.physWorld.removeRigidBody(S.playerBody); } catch(e){} S.playerBody = null; }
+
+  // Capsule with total height = PHYS.bodyHeight, radius = PHYS.bodyRadius (live values).
   // Rapier capsule param 'halfHeight' is the half-length of the cylindrical *middle* part,
   // so total height = 2 * (halfHeight + radius)
-  const totalH = CFG.playerHeight;
-  const r = CFG.playerRadius * 0.55;             // 0.22 - fits through normal doors
+  const totalH = PHYS.bodyHeight;
+  const r = PHYS.bodyRadius;
   const halfH = Math.max(0.05, totalH/2 - r);
   PHYS.capsuleRadius = r;
   PHYS.capsuleHalfHeight = halfH;
 
-  // Place the body so the capsule's *bottom* sits on y=0 by default;
+  // Place the body so the capsule's *bottom* sits at S.pos.y - totalH;
   // S.pos.y is the eye/top position so the body center is S.pos.y - totalH/2.
   const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
     .setTranslation(S.pos.x, S.pos.y - totalH/2, S.pos.z);
@@ -189,6 +217,12 @@ function createPlayerBody() {
     .setFriction(0.0)
     .setRestitution(0.0);
   S.playerCol = S.physWorld.createCollider(colDesc, S.playerBody);
+}
+
+// Live-rebuild the player capsule when the calibrator changes radius/height.
+// Preserves the player's current position so it doesn't teleport.
+function rebuildPlayerBody() {
+  createPlayerBody();
 }
 
 /** Build the static map collider from a merged THREE.BufferGeometry.
@@ -659,7 +693,7 @@ function updatePlayer(dt) {
     // S.pos is the camera/eye position; capsule center is at body translation.
     S.pos.x = nx;
     S.pos.z = nz;
-    S.pos.y = ny + CFG.playerHeight/2;  // top of capsule == eye
+    S.pos.y = ny + PHYS.bodyHeight/2;  // top of capsule == eye
 
     // If we were airborne and just landed, play the landing fx
     if (!wasGrounded && S.isGrounded) {
@@ -673,8 +707,8 @@ function updatePlayer(dt) {
 
     // Safety net: if something teleports us below the world, reset
     if (S.pos.y < -50) {
-      S.pos.set(0, CFG.playerHeight, 0); S.vel.set(0,0,0);
-      S.playerBody.setNextKinematicTranslation({ x:0, y:CFG.playerHeight/2, z:0 });
+      S.pos.set(0, PHYS.bodyHeight, 0); S.vel.set(0,0,0);
+      S.playerBody.setNextKinematicTranslation({ x:0, y:PHYS.bodyHeight/2, z:0 });
     }
   } else {
     // Fallback (should not happen in practice): integrate without collision.
@@ -823,6 +857,99 @@ function setupCalibrator(meta) {
   const ml=document.getElementById('mesh-list'); ml.innerHTML=meta.meshes.length?meta.meshes.map(m=>`<div style="border-bottom:1px solid #333;padding:2px 0;cursor:pointer" data-name="${m.name||'unnamed'}">${m.name||'unnamed'}</div>`).join(''):'<div style="color:#888;text-align:center">No meshes</div>';
 }
 
+/* === PHYSICS CALIBRATOR ===
+ * Live in-game tuning panel for the Rapier character controller.
+ * Same UX as the weapon calibrator: drag a slider, see the change instantly,
+ * settings persist in localStorage('physCal').
+ *
+ * Sliders -> PHYS fields -> applyControllerSettings() / rebuildPlayerBody()
+ */
+function setupPhysicsCalibrator() {
+  const btn = document.getElementById('btn-phys-cal');
+  const ui = document.getElementById('physics-ui');
+  if (!btn || !ui) return;
+  btn.hidden = false;
+
+  // Slider id -> PHYS field name. Keep in sync with index.html.
+  const SLIDERS = [
+    { id: 'phys-radius',   field: 'bodyRadius',          rebuild: true,  fmt: v => v.toFixed(2) },
+    { id: 'phys-height',   field: 'bodyHeight',          rebuild: true,  fmt: v => v.toFixed(2) },
+    { id: 'phys-step',     field: 'AUTOSTEP_HEIGHT',     ctlOnly: true,  fmt: v => v.toFixed(2) },
+    { id: 'phys-stepw',    field: 'AUTOSTEP_MIN_WIDTH',  ctlOnly: true,  fmt: v => v.toFixed(2) },
+    { id: 'phys-snap',     field: 'SNAP_DIST',           ctlOnly: true,  fmt: v => v.toFixed(2) },
+    { id: 'phys-skin',     field: 'CHAR_OFFSET',         ctlOnly: true,  fmt: v => v.toFixed(3) },
+    { id: 'phys-climb',    field: 'MAX_SLOPE_CLIMB_DEG', ctlOnly: true,  fmt: v => Math.round(v) + '°' },
+    { id: 'phys-slide',    field: 'MIN_SLOPE_SLIDE_DEG', ctlOnly: true,  fmt: v => Math.round(v) + '°' }
+  ];
+
+  // Defaults to restore on RESET
+  const DEFAULTS = {
+    bodyRadius: 0.18, bodyHeight: 2.2,
+    AUTOSTEP_HEIGHT: 1.0, AUTOSTEP_MIN_WIDTH: 0.05,
+    SNAP_DIST: 0.5, CHAR_OFFSET: 0.02,
+    MAX_SLOPE_CLIMB_DEG: 50, MIN_SLOPE_SLIDE_DEG: 65
+  };
+
+  function syncSliderToState() {
+    SLIDERS.forEach(s => {
+      const el = document.getElementById(s.id);
+      const lab = document.getElementById(s.id + '-val');
+      if (!el) return;
+      el.value = PHYS[s.field];
+      if (lab) lab.innerText = s.fmt(+el.value);
+    });
+  }
+
+  function persist() {
+    const out = {};
+    for (const k of Object.keys(DEFAULTS)) out[k] = PHYS[k];
+    try { localStorage.setItem('physCal', JSON.stringify(out)); } catch(e){}
+  }
+
+  function applySlider(s) {
+    const el = document.getElementById(s.id);
+    if (!el) return;
+    const v = +el.value;
+    PHYS[s.field] = v;
+    const lab = document.getElementById(s.id + '-val');
+    if (lab) lab.innerText = s.fmt(v);
+    if (s.rebuild) {
+      // shape change - need a fresh collider
+      rebuildPlayerBody();
+    } else if (s.ctlOnly) {
+      // controller setting - rebuild the controller (cheap)
+      applyControllerSettings();
+    }
+    persist();
+  }
+
+  SLIDERS.forEach(s => {
+    const el = document.getElementById(s.id);
+    if (el) el.addEventListener('input', () => applySlider(s));
+  });
+
+  syncSliderToState();
+
+  const toggle = e => { e.preventDefault(); e.stopPropagation(); ui.hidden = !ui.hidden; };
+  btn.addEventListener('click', toggle);
+  btn.addEventListener('touchstart', toggle, { passive: false });
+  const closeBtn = document.getElementById('btn-close-phys');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', toggle);
+    closeBtn.addEventListener('touchstart', toggle, { passive: false });
+  }
+  const resetBtn = document.getElementById('btn-reset-phys');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      Object.assign(PHYS, DEFAULTS);
+      syncSliderToState();
+      applyControllerSettings();
+      rebuildPlayerBody();
+      persist();
+    });
+  }
+}
+
 /* === BOOTSTRAP === */
 async function init() {
   buildTextures();
@@ -864,6 +991,8 @@ async function init() {
 
   // Player physics body (must exist after the map collider so the first step has something to land on)
   createPlayerBody();
+  // Physics calibrator panel (always available - works on default and custom maps)
+  setupPhysicsCalibrator();
 
   let weaponMeta;
   try{
