@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { Capsule } from 'three/addons/math/Capsule.js';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
+import RAPIER from '@dimforge/rapier3d-compat';
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
@@ -119,8 +120,106 @@ const S = {
   ammo:CFG.magSize, reserve:CFG.reserveStart, lastFire:0, fireCount:0, kills:0, screenFlash:0,
   weaponWrapper:null, weaponMixer:null, weaponActions:{}, currentAnim:null, defaultWeaponTransform:null,
   impacts:[], decals:[], shells:[], tracers:[], targets:[], raycastTargets:[], collisionMeshes:[], bvhMesh:null,
-  muzzleLight:null
+  muzzleLight:null,
+  // === Rapier physics handles ===
+  physWorld:null, charCtl:null, playerBody:null, playerCol:null, mapCol:null
 };
+
+/* === PHYSICS (Rapier) ===
+ * Rapier replaces the hand-rolled capsule slide + floor raycast.
+ * - World: zero damping, gravity = -CFG.gravity
+ * - Map: a single static TriMesh collider (built from merged collision geometry,
+ *   same source the BVH uses, so both are guaranteed in sync)
+ * - Player: kinematicPositionBased rigid body + capsule collider
+ * - Movement: KinematicCharacterController.computeColliderMovement(...)
+ *   handles slide, autostep, slope limits, snap-to-ground, all natively.
+ */
+const PHYS = {
+  // Tunables. These are what actually fix doors/steps; they're explicit on purpose.
+  CHAR_OFFSET: 0.05,        // skin width (Rapier needs > 0)
+  AUTOSTEP_HEIGHT: 0.5,     // climb anything up to ~knee-high without thinking
+  AUTOSTEP_MIN_WIDTH: 0.2,  // step tread must be >= 20cm to be valid
+  SNAP_DIST: 0.5,           // stick to ground within 0.5m to avoid bouncing off ledges going down
+  MAX_SLOPE_CLIMB: Math.PI/4,    // 45 deg
+  MIN_SLOPE_SLIDE: Math.PI/3,    // 60 deg - steeper than this and you slide
+
+  capsuleHalfHeight: 0,     // set when player body is created
+  capsuleRadius: 0,
+  // Reused per-frame to avoid allocations
+  desired: { x:0, y:0, z:0 }
+};
+
+async function initPhysics() {
+  await RAPIER.init();
+  const gravity = { x: 0, y: -CFG.gravity, z: 0 };
+  S.physWorld = new RAPIER.World(gravity);
+  // Slightly larger timestep tolerance is fine for an FPS - we step at frame rate
+  S.physWorld.timestep = 1/60;
+
+  // Character controller
+  S.charCtl = S.physWorld.createCharacterController(PHYS.CHAR_OFFSET);
+  S.charCtl.setUp({ x:0, y:1, z:0 });
+  S.charCtl.enableAutostep(PHYS.AUTOSTEP_HEIGHT, PHYS.AUTOSTEP_MIN_WIDTH, true);
+  S.charCtl.enableSnapToGround(PHYS.SNAP_DIST);
+  S.charCtl.setMaxSlopeClimbAngle(PHYS.MAX_SLOPE_CLIMB);
+  S.charCtl.setMinSlopeSlideAngle(PHYS.MIN_SLOPE_SLIDE);
+  // Don't slide on small bumps - smooths walking on uneven floors
+  S.charCtl.setApplyImpulsesToDynamicBodies(false);
+  // Filter out our own collider on character cast (set when player is created)
+}
+
+function createPlayerBody() {
+  if (!S.physWorld) return;
+  // Capsule with total height = playerHeight, radius = playerRadius * 0.55
+  // Rapier capsule param 'halfHeight' is the half-length of the cylindrical *middle* part,
+  // so total height = 2 * (halfHeight + radius)
+  const totalH = CFG.playerHeight;
+  const r = CFG.playerRadius * 0.55;             // 0.22 - fits through normal doors
+  const halfH = Math.max(0.05, totalH/2 - r);
+  PHYS.capsuleRadius = r;
+  PHYS.capsuleHalfHeight = halfH;
+
+  // Place the body so the capsule's *bottom* sits on y=0 by default;
+  // S.pos.y is the eye/top position so the body center is S.pos.y - totalH/2.
+  const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
+    .setTranslation(S.pos.x, S.pos.y - totalH/2, S.pos.z);
+  S.playerBody = S.physWorld.createRigidBody(bodyDesc);
+
+  const colDesc = RAPIER.ColliderDesc.capsule(halfH, r)
+    .setFriction(0.0)
+    .setRestitution(0.0);
+  S.playerCol = S.physWorld.createCollider(colDesc, S.playerBody);
+}
+
+/** Build the static map collider from a merged THREE.BufferGeometry.
+ *  We reuse the same geometry the BVH uses to guarantee they describe the same world. */
+function buildMapCollider(mergedGeom) {
+  if (!S.physWorld || !mergedGeom) return;
+  // Remove old one if rebuilding
+  if (S.mapCol) { try { S.physWorld.removeCollider(S.mapCol, false); } catch(e){} S.mapCol = null; }
+
+  const posAttr = mergedGeom.getAttribute('position');
+  if (!posAttr) return;
+  const verts = posAttr.array instanceof Float32Array ? posAttr.array : new Float32Array(posAttr.array);
+
+  // Rapier wants a Uint32Array index buffer. If the merged geometry is non-indexed,
+  // synthesize a sequential index.
+  let indices;
+  if (mergedGeom.index) {
+    const src = mergedGeom.index.array;
+    indices = src instanceof Uint32Array ? src : new Uint32Array(src);
+  } else {
+    const triCount = (verts.length / 3) | 0;
+    indices = new Uint32Array(triCount);
+    for (let i = 0; i < triCount; i++) indices[i] = i;
+  }
+
+  const colDesc = RAPIER.ColliderDesc.trimesh(verts, indices)
+    .setFriction(1.0)
+    .setRestitution(0.0);
+  S.mapCol = S.physWorld.createCollider(colDesc);
+  console.log('[Phys] Map collider built: ' + (verts.length/3) + ' verts, ' + (indices.length/3) + ' tris');
+}
 
 /* === SPRINGS === */
 const springs = {
@@ -210,7 +309,7 @@ function buildDefaultMap() {
   // Build BVH
   const geoms=[];
   S.collisionMeshes.forEach(m=>{if(!m.geometry) return; m.updateMatrixWorld(true); const g=m.geometry.clone(); g.applyMatrix4(m.matrixWorld); for(const k in g.attributes) if(k!=='position') g.deleteAttribute(k); geoms.push(g);});
-  if(geoms.length>0){try{const merged=BufferGeometryUtils.mergeGeometries(geoms,false); if(merged){merged.boundsTree=new MeshBVH(merged); S.bvhMesh=new THREE.Mesh(merged,new THREE.MeshBasicMaterial());}}catch(e){console.warn('BVH merge failed',e);}}
+  if(geoms.length>0){try{const merged=BufferGeometryUtils.mergeGeometries(geoms,false); if(merged){merged.boundsTree=new MeshBVH(merged); S.bvhMesh=new THREE.Mesh(merged,new THREE.MeshBasicMaterial()); buildMapCollider(merged);}}catch(e){console.warn('BVH merge failed',e);}}
 }
 
 async function loadCustomMap(url) {
@@ -310,7 +409,7 @@ async function loadCustomMap(url) {
       if(collisionGeoms.length>0){
         try{
           const merged=BufferGeometryUtils.mergeGeometries(collisionGeoms,false);
-          if(merged){merged.boundsTree=new MeshBVH(merged); S.bvhMesh=new THREE.Mesh(merged,new THREE.MeshBasicMaterial());}
+          if(merged){merged.boundsTree=new MeshBVH(merged); S.bvhMesh=new THREE.Mesh(merged,new THREE.MeshBasicMaterial()); buildMapCollider(merged);}
         }catch(e){console.warn('BVH merge failed',e);}
       }
 
@@ -530,41 +629,61 @@ function updatePlayer(dt) {
   S.isSprinting=canSprint&&sprint;
   let spd=CFG.playerSpeed; if(S.isAds) spd*=CFG.adsSpeedMult; if(S.isFiring&&!S.isReloading) spd*=CFG.fireSpeedMult; if(S.isSprinting) spd*=CFG.sprintMult;
   S.vel.x+=(_move.x*spd-S.vel.x)*10*dt; S.vel.z+=(_move.z*spd-S.vel.z)*10*dt;
-  S.pos.x+=S.vel.x*dt; S.pos.z+=S.vel.z*dt;
 
-  // BVH slide
-  if(S.bvhMesh&&S.bvhMesh.geometry.boundsTree){
-    const r=CFG.playerRadius*0.75, h=CFG.playerHeight;
-    _capsule.radius=r; _capsule.start.set(S.pos.x,S.pos.y-h+r+0.2,S.pos.z); _capsule.end.set(S.pos.x,S.pos.y-r,S.pos.z);
-    for(let iter=0;iter<3;iter++){_capLine.start.copy(_capsule.start); _capLine.end.copy(_capsule.end);
-      S.bvhMesh.geometry.boundsTree.shapecast({intersectsBounds:box=>_capsule.intersectsBox(box), intersectsTriangle:tri=>{tri.getNormal(_triN); if(Math.abs(_triN.y)>0.7) return false; const dist=tri.closestPointToSegment(_capLine,_triP,_capP); if(dist<_capsule.radius){const depth=_capsule.radius-dist; const dir=_capP.sub(_triP); dir.y=0; if(dir.lengthSq()>0){dir.normalize(); _capsule.translate(dir.multiplyScalar(depth));}}}});}
-    S.pos.x=_capsule.start.x; S.pos.z=_capsule.start.z;
-  }
+  // === Movement: Rapier kinematic character controller ===
+  if (S.physWorld && S.charCtl && S.playerBody) {
+    // Apply gravity to vertical velocity (jump impulses set S.vel.y elsewhere)
+    if (!S.isGrounded) S.vel.y -= CFG.gravity * dt;
+    else if (S.vel.y < 0) S.vel.y = -1;  // small downward bias keeps us snapped to ground
 
-  // Floor - use BVH raycast when available (much faster than intersectObjects on complex GLBs)
-  let floorY=-1000, hit=false;
-  const samples = hasCustomMap ? FLOOR_SAMPLES_LITE : FLOOR_SAMPLES;
-  if(S.bvhMesh && S.bvhMesh.geometry.boundsTree) {
-    // BVH floor detection - single geometry, blazing fast
-    for(const s of samples){
-      _rayO.set(S.pos.x+s.x, S.pos.y+1, S.pos.z+s.z);
-      _floorRay.set(_rayO, _down); _floorRay.far=50; _floorRay.firstHitOnly=true;
-      const hits = _floorRay.intersectObject(S.bvhMesh, false);
-      for(const h of hits){
-        if(h.face && h.face.normal.y > 0.7){
-          const y = h.point.y + CFG.playerHeight;
-          if(y - S.pos.y < 0.4 && y > floorY){ floorY=y; hit=true; } break;
-        }
-      }
+    PHYS.desired.x = S.vel.x * dt;
+    PHYS.desired.y = S.vel.y * dt;
+    PHYS.desired.z = S.vel.z * dt;
+
+    // Compute the corrected movement: handles slide, autostep, slope limits, snap-to-ground.
+    S.charCtl.computeColliderMovement(S.playerCol, PHYS.desired);
+    const corrected = S.charCtl.computedMovement();
+    const wasGrounded = S.isGrounded;
+    S.isGrounded = S.charCtl.computedGrounded();
+
+    const t = S.playerBody.translation();
+    const nx = t.x + corrected.x;
+    const ny = t.y + corrected.y;
+    const nz = t.z + corrected.z;
+    S.playerBody.setNextKinematicTranslation({ x: nx, y: ny, z: nz });
+
+    // Step the physics world (kinematic bodies' next translations are committed here)
+    S.physWorld.step();
+
+    // Mirror physics state back into game state.
+    // S.pos is the camera/eye position; capsule center is at body translation.
+    S.pos.x = nx;
+    S.pos.z = nz;
+    S.pos.y = ny + CFG.playerHeight/2;  // top of capsule == eye
+
+    // If we were airborne and just landed, play the landing fx
+    if (!wasGrounded && S.isGrounded) {
+      springs.shake.addImpulse(Math.min(2, Math.abs(S.vel.y) * 0.15));
+      playFootstep();
+      S.vel.y = 0;
     }
-  } else if(S.collisionMeshes.length>0){
-    for(const s of samples){_rayO.set(S.pos.x+s.x,S.pos.y+1,S.pos.z+s.z); _floorRay.set(_rayO,_down); _floorRay.far=50; const hits=_floorRay.intersectObjects(S.collisionMeshes,false); for(const h of hits){if(h.face&&h.face.normal.y>0.7){const y=h.point.y+CFG.playerHeight; if(y-S.pos.y<0.4&&y>floorY){floorY=y; hit=true;} break;}}}
-  } else { floorY=CFG.playerHeight; hit=true; }
-  const targetY=hit?floorY:-1000;
+    // If we were grounded and walked off a ledge, the controller will report not grounded
+    // and gravity will take over next frame. No special-case needed.
+    if (S.isGrounded && S.vel.y < 0) S.vel.y = 0;
 
-  if(!S.isGrounded){S.vel.y-=CFG.gravity*dt; S.pos.y+=S.vel.y*dt; if(S.pos.y<=targetY){S.pos.y=targetY; S.vel.y=0; S.isGrounded=true; springs.shake.addImpulse(Math.min(2,Math.abs(S.vel.y)*0.15)); playFootstep();}}
-  else{if(S.pos.y>targetY+0.5) S.isGrounded=false; else{S.pos.y+=(targetY-S.pos.y)*15*dt; S.vel.y=0;}}
-  if(S.pos.y<-50){S.pos.set(0,CFG.playerHeight,0); S.vel.set(0,0,0);}
+    // Safety net: if something teleports us below the world, reset
+    if (S.pos.y < -50) {
+      S.pos.set(0, CFG.playerHeight, 0); S.vel.set(0,0,0);
+      S.playerBody.setNextKinematicTranslation({ x:0, y:CFG.playerHeight/2, z:0 });
+    }
+  } else {
+    // Fallback (should not happen in practice): integrate without collision.
+    S.pos.x += S.vel.x * dt;
+    S.pos.z += S.vel.z * dt;
+    if (!S.isGrounded) { S.vel.y -= CFG.gravity * dt; S.pos.y += S.vel.y * dt; }
+    if (S.pos.y <= CFG.playerHeight) { S.pos.y = CFG.playerHeight; S.vel.y = 0; S.isGrounded = true; }
+    if (S.pos.y < -50) { S.pos.set(0, CFG.playerHeight, 0); S.vel.set(0,0,0); }
+  }
 
   // Walk phase
   const spd2D=Math.hypot(S.vel.x,S.vel.z);
@@ -708,6 +827,14 @@ function setupCalibrator(meta) {
 async function init() {
   buildTextures();
 
+  // Initialize physics engine (Rapier WASM) before anything that builds colliders
+  try {
+    await initPhysics();
+  } catch(e) {
+    showError('Physics init failed: ' + e.message);
+    console.error(e);
+  }
+
   // Check if user has a custom map BEFORE building lights (affects muzzle light decision)
   const [weaponBlob,mapBlob]=await Promise.all([loadBlob('weapon'),loadBlob('map')]);
   if(mapBlob) hasCustomMap = true;
@@ -734,6 +861,9 @@ async function init() {
   try{
     if(mapBlob) await loadCustomMap(URL.createObjectURL(mapBlob)); else buildDefaultMap();
   }catch(e){showError('Map failed: '+e.message); buildDefaultMap();}
+
+  // Player physics body (must exist after the map collider so the first step has something to land on)
+  createPlayerBody();
 
   let weaponMeta;
   try{
