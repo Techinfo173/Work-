@@ -19,7 +19,7 @@ const CFG = {
   gunHipRot: new THREE.Euler(0.02, 0.05, -0.05),
   gunAdsPos: new THREE.Vector3(0.0, -0.256, -0.15),
   gunAdsRot: new THREE.Euler(0, 0, 0),
-  maxDecals: 60, maxShells: 40
+  maxDecals: isMobile ? 20 : 60, maxShells: isMobile ? 15 : 40
 };
 
 /* === SPRING === */
@@ -53,19 +53,24 @@ const TEX = {};
 function canvas(sz) { const c=document.createElement('canvas'); c.width=c.height=sz; return [c,c.getContext('2d')]; }
 function makeTex(c,rep=1) { const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace; if(rep!==1) t.repeat.set(rep,rep); return t; }
 function buildTextures() {
+  const gridSize = isMobile ? 256 : 1024;
+  const flashSize = isMobile ? 128 : 256;
   let c,ctx;
-  // Grid floor
-  [c,ctx]=canvas(1024); ctx.fillStyle='#3a3a3a'; ctx.fillRect(0,0,1024,1024);
-  for(let i=0;i<4000;i++){ctx.fillStyle=Math.random()>0.5?'rgba(0,0,0,0.2)':'rgba(255,255,255,0.05)'; ctx.fillRect(Math.random()*1024,Math.random()*1024,3,3);}
-  ctx.strokeStyle='rgba(255,170,0,0.3)'; ctx.lineWidth=3; for(let i=0;i<=1024;i+=128){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,1024);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(1024,i);ctx.stroke();}
+  // Grid floor (smaller on mobile)
+  [c,ctx]=canvas(gridSize); ctx.fillStyle='#3a3a3a'; ctx.fillRect(0,0,gridSize,gridSize);
+  const speckCount = isMobile ? 500 : 4000;
+  for(let i=0;i<speckCount;i++){ctx.fillStyle=Math.random()>0.5?'rgba(0,0,0,0.2)':'rgba(255,255,255,0.05)'; ctx.fillRect(Math.random()*gridSize,Math.random()*gridSize,3,3);}
+  ctx.strokeStyle='rgba(255,170,0,0.3)'; ctx.lineWidth=3; const step = gridSize/8;
+  for(let i=0;i<=gridSize;i+=step){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,gridSize);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(gridSize,i);ctx.stroke();}
   TEX.grid=makeTex(c,100);
-  // Sandbag
-  [c,ctx]=canvas(256); ctx.fillStyle='#8b8b6a'; ctx.fillRect(0,0,256,256); ctx.strokeStyle='rgba(0,0,0,0.1)'; ctx.lineWidth=1; for(let i=0;i<256;i+=4){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,256);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(256,i);ctx.stroke();}
+  // Sandbag (small, fine)
+  [c,ctx]=canvas(128); ctx.fillStyle='#8b8b6a'; ctx.fillRect(0,0,128,128); ctx.strokeStyle='rgba(0,0,0,0.1)'; ctx.lineWidth=1; for(let i=0;i<128;i+=4){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,128);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(128,i);ctx.stroke();}
   TEX.sandbag=makeTex(c);
   // Muzzle flash
-  [c,ctx]=canvas(256); ctx.fillStyle='#000'; ctx.fillRect(0,0,256,256); ctx.globalCompositeOperation='lighter';
-  for(let i=0;i<30;i++){const r=10+Math.random()*25,x=32+(Math.random()-0.5)*20,y=128+(Math.random()-0.5)*20; const g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(255,255,255,0.8)'); g.addColorStop(0.3,'rgba(255,200,100,0.5)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,6.28); ctx.fill();}
-  for(let i=0;i<20;i++){const r=15+Math.random()*25,x=50+Math.random()*150,y=128+(Math.random()-0.5)*20; const g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(255,220,100,0.8)'); g.addColorStop(0.4,'rgba(255,100,20,0.3)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,6.28); ctx.fill();}
+  [c,ctx]=canvas(flashSize); ctx.fillStyle='#000'; ctx.fillRect(0,0,flashSize,flashSize); ctx.globalCompositeOperation='lighter';
+  const cx = flashSize/8, cy = flashSize/2;
+  for(let i=0;i<(isMobile?15:30);i++){const r=10+Math.random()*25,x=cx+(Math.random()-0.5)*20,y=cy+(Math.random()-0.5)*20; const g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(255,255,255,0.8)'); g.addColorStop(0.3,'rgba(255,200,100,0.5)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,6.28); ctx.fill();}
+  for(let i=0;i<(isMobile?10:20);i++){const r=15+Math.random()*25,x=50+Math.random()*(flashSize-50),y=cy+(Math.random()-0.5)*20; const g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(255,220,100,0.8)'); g.addColorStop(0.4,'rgba(255,100,20,0.3)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,6.28); ctx.fill();}
   TEX.muzzle=new THREE.CanvasTexture(c); TEX.muzzle.colorSpace=THREE.SRGBColorSpace;
   // Muzzle glow
   [c,ctx]=canvas(64); ctx.fillStyle='#000'; ctx.fillRect(0,0,64,64); const gg=ctx.createRadialGradient(32,32,0,32,32,32); gg.addColorStop(0,'rgba(255,180,50,0.6)'); gg.addColorStop(0.4,'rgba(200,50,0,0.2)'); gg.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=gg; ctx.fillRect(0,0,64,64);
@@ -80,22 +85,33 @@ function buildTextures() {
 }
 
 
-/* === RENDERER SETUP === */
-const renderer = new THREE.WebGLRenderer({ antialias:!isMobile, powerPreference:'high-performance', precision:'mediump' });
-renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio,1.0) : Math.min(window.devicePixelRatio,1.5));
+/* === RENDERER SETUP (mobile-optimized) === */
+const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance', precision:'mediump' });
+// Aggressive pixel ratio cap on mobile - this is the #1 perf killer
+renderer.setPixelRatio(isMobile ? 0.6 : Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled=true; renderer.shadowMap.type=isMobile?THREE.BasicShadowMap:THREE.PCFSoftShadowMap;
-renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.1; renderer.autoClear=false;
+// Shadows disabled on mobile - massive perf hit
+renderer.shadowMap.enabled = !isMobile;
+if (!isMobile) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+// Cheap tone mapping on mobile
+renderer.toneMapping = isMobile ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.autoClear = false;
 document.body.appendChild(renderer.domElement);
 
-const worldScene=new THREE.Scene(); worldScene.background=new THREE.Color(0xcccccc); worldScene.fog=new THREE.FogExp2(0xcccccc,0.0008);
-const worldCamera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.1,5000);
+const worldScene=new THREE.Scene(); worldScene.background=new THREE.Color(0xcccccc); worldScene.fog=new THREE.FogExp2(0xcccccc,0.0015);
+const worldCamera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.1,300);
 const uiScene=new THREE.Scene();
 const uiCamera=new THREE.PerspectiveCamera(50,window.innerWidth/window.innerHeight,0.01,100);
 
-const pmrem=new THREE.PMREMGenerator(renderer);
-const envTex=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
-worldScene.environment=envTex; uiScene.environment=envTex; pmrem.dispose();
+// Skip PMREM env on mobile - just use ambient. PMREM is expensive at boot
+// and the env map adds shader cost every frame.
+if (!isMobile) {
+  const pmrem=new THREE.PMREMGenerator(renderer);
+  const envTex=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+  worldScene.environment=envTex; uiScene.environment=envTex; pmrem.dispose();
+}
 
 function onResize() { const w=window.innerWidth,h=window.innerHeight; renderer.setSize(w,h); worldCamera.aspect=w/h; worldCamera.updateProjectionMatrix(); uiCamera.aspect=w/h; uiCamera.updateProjectionMatrix(); }
 window.addEventListener('resize',onResize);
@@ -144,20 +160,27 @@ const _triN=new THREE.Vector3(), _triP=new THREE.Vector3(), _capP=new THREE.Vect
 /* === WORLD BUILD === */
 function buildLights() {
   worldScene.add(new THREE.HemisphereLight(0xffffff,0x888888,0.8));
-  const dir=new THREE.DirectionalLight(0xfff9f0,2.5); dir.position.set(50,80,50); dir.castShadow=true;
-  dir.shadow.mapSize.width=dir.shadow.mapSize.height=isMobile?512:2048;
-  dir.shadow.camera.left=-60; dir.shadow.camera.right=60; dir.shadow.camera.top=60; dir.shadow.camera.bottom=-60;
-  dir.shadow.camera.far=150; dir.shadow.bias=isMobile?-0.005:-0.001;
+  const dir=new THREE.DirectionalLight(0xfff9f0,2.5); dir.position.set(50,80,50);
+  // Shadows are off entirely on mobile (renderer.shadowMap.enabled=false)
+  if (!isMobile) {
+    dir.castShadow=true;
+    dir.shadow.mapSize.width=dir.shadow.mapSize.height=2048;
+    dir.shadow.camera.left=-60; dir.shadow.camera.right=60; dir.shadow.camera.top=60; dir.shadow.camera.bottom=-60;
+    dir.shadow.camera.far=150; dir.shadow.bias=-0.001;
+  }
   worldScene.add(dir);
-  S.muzzleLight=new THREE.PointLight(0xffaa44,0,8); worldScene.add(S.muzzleLight);
+  // No dynamic muzzle light on mobile (PointLight forces a full shader rebuild)
+  if (!isMobile) {
+    S.muzzleLight = new THREE.PointLight(0xffaa44,0,8); worldScene.add(S.muzzleLight);
+  }
 }
 
 function buildDefaultMap() {
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200).rotateX(-Math.PI/2), new THREE.MeshStandardMaterial({map:TEX.grid,roughness:0.9,metalness:0.05}));
-  floor.receiveShadow=true; worldScene.add(floor); S.collisionMeshes.push(floor); S.raycastTargets.push(floor);
+  if(!isMobile) floor.receiveShadow=true; worldScene.add(floor); S.collisionMeshes.push(floor); S.raycastTargets.push(floor);
 
   const bMat=new THREE.MeshStandardMaterial({map:TEX.sandbag,color:0x9999aa,roughness:0.85});
-  const addBlock=(w,h,d,x,z,ry=0)=>{const g=new THREE.BoxGeometry(w,h,d); g.translate(0,h/2,0); const m=new THREE.Mesh(g,bMat); m.position.set(x,0,z); m.rotation.y=ry; m.castShadow=true; m.receiveShadow=true; worldScene.add(m); S.collisionMeshes.push(m); S.raycastTargets.push(m);};
+  const addBlock=(w,h,d,x,z,ry=0)=>{const g=new THREE.BoxGeometry(w,h,d); g.translate(0,h/2,0); const m=new THREE.Mesh(g,bMat); m.position.set(x,0,z); m.rotation.y=ry; if(!isMobile){m.castShadow=true; m.receiveShadow=true;} worldScene.add(m); S.collisionMeshes.push(m); S.raycastTargets.push(m);};
 
   const woodMat=new THREE.MeshStandardMaterial({color:0x8b5a2b,roughness:0.9});
   const metalMat=new THREE.MeshStandardMaterial({color:0x444444,metalness:0.8,roughness:0.2});
@@ -165,9 +188,9 @@ function buildDefaultMap() {
 
   const addTarget=(x,z,ry=0)=>{
     const grp=new THREE.Group(); grp.position.set(x,0,z); grp.rotation.y=ry;
-    const post=new THREE.Mesh(new THREE.BoxGeometry(0.2,1.5,0.2),woodMat); post.position.y=0.75; post.castShadow=true; grp.add(post);
+    const post=new THREE.Mesh(new THREE.BoxGeometry(0.2,1.5,0.2),woodMat); post.position.y=0.75; if(!isMobile)post.castShadow=true; grp.add(post);
     const pivot=new THREE.Group(); pivot.position.y=1.4; grp.add(pivot);
-    const body=new THREE.Mesh(new THREE.BoxGeometry(1.2,1.2,0.1),metalMat); body.position.y=0.6; body.castShadow=true; pivot.add(body);
+    const body=new THREE.Mesh(new THREE.BoxGeometry(1.2,1.2,0.1),metalMat); body.position.y=0.6; if(!isMobile)body.castShadow=true; pivot.add(body);
     const face=new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.12),faceMat); face.position.y=0.6; pivot.add(face);
     worldScene.add(grp); S.raycastTargets.push(body,face,post);
     S.targets.push({pos:new THREE.Vector3(x,2.0,z),pivot,isDown:false,resetTimer:0});
@@ -176,7 +199,9 @@ function buildDefaultMap() {
   addBlock(4,2,1,0,-10); addBlock(1,2,4,-4,-12); addBlock(1,2,4,4,-12);
   addTarget(2,-14); addTarget(-2,-14); addTarget(0,-28); addTarget(-8,-23,Math.PI/4); addTarget(8,-23,-Math.PI/4);
   addBlock(10,4,1,0,-30); addBlock(4,4,1,-12,-25,Math.PI/4); addBlock(4,4,1,12,-25,-Math.PI/4);
-  for(let i=0;i<25;i++){const w=1+Math.random()*3,h=1+Math.random()*2,d=1+Math.random()*3,x=(Math.random()-0.5)*70,z=(Math.random()-0.5)*70; if(Math.abs(x)<5&&Math.abs(z)<5) continue; addBlock(w,h,d,x,z,Math.random()*Math.PI);}
+  // Fewer scatter blocks on mobile
+  const scatter = isMobile ? 10 : 25;
+  for(let i=0;i<scatter;i++){const w=1+Math.random()*3,h=1+Math.random()*2,d=1+Math.random()*3,x=(Math.random()-0.5)*70,z=(Math.random()-0.5)*70; if(Math.abs(x)<5&&Math.abs(z)<5) continue; addBlock(w,h,d,x,z,Math.random()*Math.PI);}
 
   // Build BVH
   const geoms=[];
@@ -189,7 +214,7 @@ async function loadCustomMap(url) {
     const loader=new GLTFLoader();
     loader.load(url,gltf=>{
       const model=gltf.scene; model.updateMatrixWorld(true); const geoms=[];
-      model.traverse(c=>{if(!c.isMesh) return; c.castShadow=true; c.receiveShadow=true; S.raycastTargets.push(c); S.collisionMeshes.push(c); if(c.geometry){const g=c.geometry.clone(); g.applyMatrix4(c.matrixWorld); for(const k in g.attributes) if(k!=='position') g.deleteAttribute(k); geoms.push(g);}});
+      model.traverse(c=>{if(!c.isMesh) return; if(!isMobile){c.castShadow=true; c.receiveShadow=true;} S.raycastTargets.push(c); S.collisionMeshes.push(c); if(c.geometry){const g=c.geometry.clone(); g.applyMatrix4(c.matrixWorld); for(const k in g.attributes) if(k!=='position') g.deleteAttribute(k); geoms.push(g);}});
       if(geoms.length>0){try{const merged=BufferGeometryUtils.mergeGeometries(geoms,false); if(merged){merged.boundsTree=new MeshBVH(merged); S.bvhMesh=new THREE.Mesh(merged,new THREE.MeshBasicMaterial());}}catch(e){console.warn('BVH merge failed',e);}}
       worldScene.add(model); res(model);
     },undefined,rej);
@@ -204,9 +229,11 @@ let weaponGroup, weaponPivot, muzzleFlash, flashMeshes, muzzleGroup;
 function buildWeaponScene() {
   weaponGroup=new THREE.Group();
   weaponPivot=new THREE.Group(); weaponPivot.add(weaponGroup); uiScene.add(weaponPivot);
-  uiScene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
-  const fl=new THREE.DirectionalLight(0xffffff,3); fl.position.set(2,4,3); uiScene.add(fl);
-  const rl=new THREE.DirectionalLight(0xccddff,2); rl.position.set(-3,2,-3); uiScene.add(rl);
+  uiScene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.4));
+  const fl=new THREE.DirectionalLight(0xffffff,2.5); fl.position.set(2,4,3); uiScene.add(fl);
+  if (!isMobile) {
+    const rl=new THREE.DirectionalLight(0xccddff,2); rl.position.set(-3,2,-3); uiScene.add(rl);
+  }
   uiScene.add(new THREE.AmbientLight(0xffffff,0.6));
 
   // Muzzle flash
@@ -318,7 +345,7 @@ function spawnImpact(point,normal) {
   d.visible=true; d.material.opacity=0.9; d.position.copy(point); d.lookAt(point.x+normal.x,point.y+normal.y,point.z+normal.z); d.rotateZ(Math.random()*Math.PI*2);
   if(!d.parent) worldScene.add(d); S.decals.push({mesh:d,life:10});
 
-  for(let i=0;i<4;i++){
+  for(let i=0;i<(isMobile?2:4);i++){
     const isSpark=Math.random()>0.4;
     let p=POOL.impacts.length>0?POOL.impacts.pop():new THREE.Mesh(GEO.impact,new THREE.MeshBasicMaterial({color:0xffaa44,transparent:true,opacity:1}));
     p.visible=true; p.material.color.setHex(isSpark?0xffdd88:0x444444); p.material.opacity=1; p.material.blending=isSpark?THREE.AdditiveBlending:THREE.NormalBlending;
