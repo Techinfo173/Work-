@@ -1,492 +1,156 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ask Gemini</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@300;400&family=Inter:wght@300;400&display=swap');
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Void Engine - Tactical Combat</title>
+<style>
+:root { --accent: #ffaa00; }
+html, body { margin:0; padding:0; width:100vw; height:100vh; background:#000; overflow:hidden; overscroll-behavior:none; touch-action:none; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; color:#fff; }
+canvas { display:block; position:absolute; inset:0; width:100%; height:100%; z-index:1; }
+[hidden] { display:none !important; }
 
-        :root {
-            --bg-page: #02080a;
-            --pill-top:    #1c3d38;
-            --pill-mid:    #0f2a26;
-            --pill-bottom: #04100e;
-            --text-color: #f0faf8;
-            --icon-color: #f4fbf9;
-            --glow-core: #d4fbf0;
-            --glow-mid:  #4ee0c8;
-            --glow-deep: #128878;
-        }
+#portrait-lock { position:fixed; inset:0; background:#050608; color:var(--accent); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+@media screen and (orientation:landscape) { #portrait-lock { display:none !important; } }
+#portrait-lock h1 { font-size:8vw; letter-spacing:2px; text-transform:uppercase; margin-bottom:10px; }
 
-        * { box-sizing: border-box; }
+#start-screen { position:fixed; inset:0; background:radial-gradient(circle at center,#1a202c 0%,#000 100%); z-index:9000; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; overflow-y:auto; padding:40px 10px; }
+.boot-text { font-size:28px; font-weight:900; margin-top:40px; letter-spacing:6px; margin-bottom:30px; text-shadow:0 0 20px rgba(255,255,255,0.5); }
+#loading-text { color:var(--accent); font-weight:bold; letter-spacing:3px; animation:pulse 1s infinite; margin-bottom:30px; }
+@keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+#btn-start { background:rgba(255,170,0,0.15); border:2px solid var(--accent); color:#fff; padding:20px 60px; font-size:20px; font-weight:900; letter-spacing:3px; border-radius:4px; box-shadow:0 0 20px rgba(255,170,0,0.3); text-transform:uppercase; cursor:pointer; transition:transform 0.1s; }
+#btn-start:active { transform:scale(0.95); background:rgba(255,170,0,0.4); }
+.upload-row { margin-top:30px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center; max-width:800px; }
+.upload-btn,.clear-btn { border:1px solid; color:#fff; padding:10px 20px; cursor:pointer; border-radius:4px; font-weight:bold; font-family:monospace; }
+.upload-btn.weapon { background:rgba(100,200,100,0.2); border-color:#8f8; }
+.upload-btn.map { background:rgba(255,100,100,0.2); border-color:#f88; }
+.upload-btn.sky { background:rgba(255,255,255,0.1); border-color:#fff; }
+.clear-btn { background:rgba(255,50,50,0.5); border-color:#f00; }
+#error-toast { margin-top:20px; padding:12px 20px; background:rgba(255,0,0,0.2); border:1px solid #f44; color:#fcc; border-radius:4px; max-width:600px; text-align:center; font-family:monospace; font-size:13px; }
 
-        body {
-            margin: 0;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--bg-page);
-            font-family: 'Google Sans', 'Inter', -apple-system, sans-serif;
-            -webkit-font-smoothing: antialiased;
-            position: relative;
-            overflow: hidden;
-        }
+#hud { position:fixed; inset:0; z-index:10; pointer-events:none; }
+#crosshair { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:4px; height:4px; background:rgba(255,255,255,0.9); border-radius:50%; transition:opacity 0.15s; }
+.ch-line { position:absolute; background:rgba(255,255,255,0.8); box-shadow:0 0 3px rgba(0,0,0,0.8); }
+.ch-t { top:-12px; left:1px; width:2px; height:8px; } .ch-b { bottom:-12px; left:1px; width:2px; height:8px; }
+.ch-l { left:-12px; top:1px; width:8px; height:2px; } .ch-r { right:-12px; top:1px; width:8px; height:2px; }
 
-        /* Background ambient glow */
-        body::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 800px;
-            height: 300px;
-            transform: translate(-50%, 20%);
-            background: radial-gradient(ellipse at center,
-                rgba(30, 160, 140, 0.12) 0%,
-                transparent 65%);
-            filter: blur(30px);
-            pointer-events: none;
-        }
+#hit-marker { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:40px; height:40px; opacity:0; pointer-events:none; transition:transform 0.1s,opacity 0.1s; }
+.hm-line { position:absolute; background:#fff; width:2px; height:12px; top:14px; left:19px; box-shadow:0 0 4px #000; }
+.hm-1{transform:rotate(45deg) translateY(-20px)} .hm-2{transform:rotate(135deg) translateY(-20px)} .hm-3{transform:rotate(225deg) translateY(-20px)} .hm-4{transform:rotate(315deg) translateY(-20px)}
 
-        /* Canvas for background sparkle field */
-        #bg-canvas {
-            position: fixed;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 0;
-        }
+#ammo-widget { position:absolute; bottom:30px; right:120px; display:flex; align-items:baseline; background:linear-gradient(90deg,transparent,rgba(0,0,0,0.6)); padding:8px 25px; border-right:4px solid var(--accent); text-shadow:0 2px 4px #000; }
+#status-indicator { position:absolute; bottom:65px; right:5px; color:var(--accent); font-weight:900; font-size:14px; letter-spacing:2px; text-transform:uppercase; opacity:0; transition:opacity 0.2s; }
+#ammo-current { font-size:46px; font-weight:900; color:#fff; margin-right:6px; font-family:monospace; letter-spacing:-2px; }
+#ammo-max { font-size:22px; color:#aaa; font-weight:bold; font-family:monospace; }
+#kill-widget { margin-left:20px; border-left:1px solid rgba(255,255,255,0.2); padding-left:20px; }
+#kill-widget .label { font-size:10px; color:#888; font-weight:bold; letter-spacing:1px; }
+#kill-count { font-size:28px; font-weight:900; color:#ffcc00; font-family:monospace; }
 
-        .pill-wrapper {
-            position: relative;
-            width: 560px;
-            height: 100px;
-            border-radius: 999px;
-            background: linear-gradient(180deg,
-                var(--pill-top)    0%,
-                var(--pill-mid)   45%,
-                var(--pill-bottom) 100%);
-            box-shadow:
-                0 28px 55px rgba(0,0,0,0.9),
-                0  8px 20px rgba(0,0,0,0.6),
-                0  0  50px rgba(30,160,140,0.07),
-                inset 0  1px 0 rgba(160,240,210,0.15),
-                inset 0 -6px 16px rgba(0,0,0,0.5);
-            overflow: hidden;
-            z-index: 1;
-        }
+#touch-left { position:absolute; top:0; left:0; width:50vw; height:100vh; pointer-events:auto; }
+#touch-right { position:absolute; top:0; right:0; width:50vw; height:100vh; pointer-events:auto; }
+#joy-base { position:absolute; width:130px; height:130px; border-radius:50%; background:radial-gradient(circle,rgba(255,255,255,0.05),transparent); border:2px solid rgba(255,255,255,0.1); transform:translate(-50%,-50%); display:none; pointer-events:none; }
+#joy-stick { position:absolute; top:50%; left:50%; width:50px; height:50px; border-radius:50%; background:rgba(255,255,255,0.3); transform:translate(-50%,-50%); box-shadow:0 0 10px rgba(0,0,0,0.5); }
 
-        /* Canvas for the Gemini sparkle ring on the pill */
-        #pill-canvas {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
+.btn-action { position:absolute; border-radius:50%; background:rgba(255,255,255,0.1); border:2px solid rgba(255,255,255,0.25); color:#fff; font-weight:900; letter-spacing:1px; display:flex; align-items:center; justify-content:center; pointer-events:auto; backdrop-filter:blur(2px); cursor:pointer; font-family:inherit; }
+.btn-action:active { background:rgba(255,170,0,0.4); border-color:var(--accent); transform:scale(0.9); }
+#btn-fire { bottom:35px; right:25px; width:85px; height:85px; font-size:20px; }
+#btn-ads { bottom:140px; right:50px; width:65px; height:65px; font-size:15px; }
+#btn-reload { bottom:140px; right:130px; width:65px; height:65px; font-size:15px; }
+#btn-inspect { bottom:35px; right:130px; width:65px; height:65px; font-size:15px; }
+#btn-jump { bottom:35px; right:210px; width:65px; height:65px; font-size:15px; }
 
-        /* Inner rim glow */
-        .pill-rim {
-            position: absolute;
-            inset: 0;
-            border-radius: 999px;
-            box-shadow:
-                inset 0 0 24px rgba(60,210,185,0.20),
-                inset 0 0 60px rgba(35,150,135,0.10);
-            pointer-events: none;
-            z-index: 2;
-        }
+#flash-overlay { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:5; }
+#vignette { position:fixed; inset:0; pointer-events:none; z-index:4; background:radial-gradient(circle at center,transparent 20%,rgba(0,0,0,0.85) 100%); transition:opacity 0.3s ease; opacity:0.55; }
 
-        /* Subtle top gloss */
-        .pill-gloss {
-            position: absolute;
-            top: 0; left: 4%; right: 4%;
-            height: 38%;
-            border-radius: 999px 999px 60% 60%;
-            background: linear-gradient(180deg,
-                rgba(255,255,255,0.045) 0%,
-                transparent 100%);
-            pointer-events: none;
-            z-index: 2;
-        }
+#compass { position:absolute; top:20px; left:50%; transform:translateX(-50%); width:300px; height:30px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.1); border-radius:2px; overflow:hidden; backdrop-filter:blur(4px); }
+#compass-indicator { position:absolute; top:0; left:50%; transform:translateX(-50%); color:var(--accent); font-weight:bold; z-index:2; font-size:18px; line-height:30px; text-shadow:0 0 5px var(--accent); }
+#bearing-strip { position:absolute; top:0; left:50%; height:100%; display:flex; align-items:center; color:rgba(255,255,255,0.7); font-size:12px; font-weight:bold; white-space:nowrap; gap:25px; will-change:transform; }
+.deg { color:rgba(255,255,255,0.3); }
 
-        .pill-content {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 30px 0 32px;
-            z-index: 10;
-        }
+#btn-fullscreen { position:absolute; top:20px; right:20px; z-index:100; width:44px; height:44px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:4px; display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; backdrop-filter:blur(4px); }
+#btn-calibrator { position:absolute; top:20px; right:80px; z-index:100; width:44px; height:44px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:4px; display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; backdrop-filter:blur(4px); font-family:monospace; font-weight:bold; font-size:11px; pointer-events:auto; }
 
-        .left-group  { display: flex; align-items: center; gap: 26px; }
-        .right-group { display: flex; align-items: center; gap: 20px; }
-
-        .icon-btn {
-            background: none; border: none; padding: 0;
-            cursor: pointer; color: var(--icon-color);
-            display: flex; align-items: center; justify-content: center;
-            outline: none; transition: opacity 0.2s ease;
-        }
-        .icon-btn:hover { opacity: 0.72; }
-
-        .icon-plus svg { width: 30px; height: 30px; }
-
-        .text-ask {
-            font-size: 30px;
-            font-weight: 300;
-            color: var(--text-color);
-            letter-spacing: 0.2px;
-            user-select: none;
-            text-shadow: 0 0 20px rgba(140,230,210,0.18);
-        }
-
-        /* ── MIC ── */
-        .mic-wrapper {
-            position: relative;
-            display: flex; align-items: center; justify-content: center;
-            width: 60px; height: 60px;
-        }
-
-        .mic-halo {
-            position: absolute;
-            width: 115px; height: 115px;
-            background: radial-gradient(circle,
-                rgba(145,245,220,0.38) 0%,
-                rgba(65,205,185,0.14) 32%,
-                transparent 65%);
-            border-radius: 50%;
-            filter: blur(10px);
-            pointer-events: none;
-        }
-
-        .mic-glow {
-            position: absolute;
-            width: 66px; height: 66px;
-            background: radial-gradient(circle,
-                var(--glow-core)  0%,
-                var(--glow-mid)  36%,
-                var(--glow-deep) 66%,
-                transparent 84%);
-            border-radius: 50%;
-            filter: blur(1.5px);
-            pointer-events: none;
-        }
-
-        .mic-core {
-            position: absolute;
-            width: 42px; height: 42px;
-            background: radial-gradient(circle,
-                rgba(215,255,245,0.60) 0%,
-                rgba(110,235,215,0.28) 52%,
-                transparent 78%);
-            border-radius: 50%;
-            pointer-events: none;
-        }
-
-        .icon-mic { position: relative; z-index: 2; color: #fff; }
-        .icon-mic svg {
-            width: 26px; height: 26px;
-            filter: drop-shadow(0 0 5px rgba(255,255,255,0.55));
-        }
-
-        .icon-bars svg { width: 22px; height: 22px; }
-    </style>
+#calibrator-ui { position:fixed; right:20px; top:80px; background:rgba(0,0,0,0.85); border:1px solid var(--accent); padding:15px; color:#fff; z-index:10002; font-family:monospace; width:280px; border-radius:4px; pointer-events:auto; max-height:85vh; overflow-y:auto; }
+#calibrator-ui h3 { margin:0 0 10px; font-size:14px; text-align:center; color:var(--accent); border-bottom:1px solid #555; padding-bottom:6px; }
+.cal-row { display:flex; justify-content:space-between; margin-bottom:2px; font-size:12px; }
+#calibrator-ui input[type=range] { width:100%; margin-bottom:8px; }
+#calibrator-ui h4 { margin:12px 0 5px; font-size:11px; color:var(--accent); border-top:1px solid #444; padding-top:8px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center; }
+#calibrator-ui h4 button { background:var(--accent); color:#000; border:none; padding:2px 6px; font-size:9px; cursor:pointer; border-radius:2px; font-weight:bold; }
+.inspector-list { background:rgba(0,0,0,0.4); padding:5px; border-radius:2px; font-size:11px; max-height:150px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+.cal-buttons { display:flex; gap:8px; margin-top:15px; }
+.cal-buttons button { flex:1; padding:8px; cursor:pointer; font-weight:bold; border-radius:4px; color:#fff; font-family:inherit; }
+#btn-reset-cal { background:rgba(255,50,50,0.5); border:1px solid #f00; }
+#btn-close-cal { background:#444; border:1px solid #666; flex:2; }
+</style>
 </head>
 <body>
+<div id="portrait-lock"><h1>Rotate Device</h1><p>Landscape Required</p></div>
 
-<!-- Background ambient sparkle canvas -->
-<canvas id="bg-canvas"></canvas>
-
-<div class="pill-wrapper">
-    <!-- Pill sparkle ring canvas -->
-    <canvas id="pill-canvas"></canvas>
-
-    <div class="pill-rim"></div>
-    <div class="pill-gloss"></div>
-
-    <div class="pill-content">
-        <div class="left-group">
-            <button class="icon-btn icon-plus" aria-label="Add">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
-                    <path d="M12 4v16M4 12h16"/>
-                </svg>
-            </button>
-            <div class="text-ask">Ask Gemini</div>
-        </div>
-
-        <div class="right-group">
-            <div class="mic-wrapper">
-                <div class="mic-halo"></div>
-                <div class="mic-glow"></div>
-                <div class="mic-core"></div>
-                <button class="icon-btn icon-mic" aria-label="Voice Input">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="9" y="3" width="6" height="11" rx="3"/>
-                        <path d="M5 11v1a7 7 0 0 0 14 0v-1"/>
-                        <path d="M12 19v3"/>
-                    </svg>
-                </button>
-            </div>
-
-            <button class="icon-btn icon-bars" aria-label="Audio Wave">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-                    <path d="M7 10v4"/>
-                    <path d="M12 6v12"/>
-                    <path d="M17 10v4"/>
-                </svg>
-            </button>
-        </div>
-    </div>
+<div id="start-screen">
+  <div class="boot-text">VOID ENGINE</div>
+  <div id="loading-text">INITIALIZING...</div>
+  <button id="btn-start" hidden>DEPLOY</button>
+  <div class="upload-row">
+    <label for="weapon-upload" class="upload-btn weapon">LOAD WEAPON (.glb)</label>
+    <input type="file" id="weapon-upload" accept=".glb,.gltf" hidden>
+    <button id="btn-clear-weapon" class="clear-btn" hidden>RESET WEAPON</button>
+    <label for="map-upload" class="upload-btn map">LOAD MAP (.glb)</label>
+    <input type="file" id="map-upload" accept=".glb,.gltf" hidden>
+    <button id="btn-clear-map" class="clear-btn" hidden>RESET MAP</button>
+    <label for="sky-upload" class="upload-btn sky">LOAD SKY</label>
+    <input type="file" id="sky-upload" accept="image/*" hidden>
+  </div>
+  <div id="error-toast" hidden></div>
 </div>
 
-<script>
-// ─────────────────────────────────────────────
-//  Draws a single Gemini 4-pointed sparkle star.
-//  Deeply concave bezier curves between points.
-// ─────────────────────────────────────────────
-function drawSparkle(ctx, cx, cy, size) {
-    const r  = size;
-    const cp = size * 0.08;
+<div id="hud" hidden>
+  <div id="compass"><div id="compass-indicator">|</div><div id="bearing-strip"></div></div>
+  <div id="touch-left"></div>
+  <div id="touch-right"></div>
+  <div id="joy-base"><div id="joy-stick"></div></div>
+  <div id="crosshair"><div class="ch-line ch-t"></div><div class="ch-line ch-b"></div><div class="ch-line ch-l"></div><div class="ch-line ch-r"></div></div>
+  <div id="hit-marker"><div class="hm-line hm-1"></div><div class="hm-line hm-2"></div><div class="hm-line hm-3"></div><div class="hm-line hm-4"></div></div>
+  <div id="ammo-widget">
+    <div id="status-indicator"></div>
+    <div id="ammo-current">30</div><div id="ammo-max">/ 120</div>
+    <div id="kill-widget"><div class="label">KILLS</div><div id="kill-count">0</div></div>
+  </div>
+  <div id="vignette"></div>
+  <div id="flash-overlay"></div>
+  <button id="btn-fire" class="btn-action">FIRE</button>
+  <button id="btn-ads" class="btn-action">ADS</button>
+  <button id="btn-reload" class="btn-action">RLD</button>
+  <button id="btn-jump" class="btn-action">JMP</button>
+  <button id="btn-inspect" class="btn-action">CHK</button>
+</div>
 
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - r);
-    ctx.bezierCurveTo(cx + cp, cy - cp,  cx + cp, cy - cp,  cx + r, cy);
-    ctx.bezierCurveTo(cx + cp, cy + cp,  cx + cp, cy + cp,  cx, cy + r);
-    ctx.bezierCurveTo(cx - cp, cy + cp,  cx - cp, cy + cp,  cx - r, cy);
-    ctx.bezierCurveTo(cx - cp, cy - cp,  cx - cp, cy - cp,  cx, cy - r);
-    ctx.closePath();
-    ctx.fill();
-}
+<button id="btn-fullscreen" hidden><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+<button id="btn-calibrator" hidden>CAL</button>
 
-// ─────────────────────────────────────────────
-//  Multi-frequency noise function (layered sines)
-//  Returns a value between 0 and 1 that creates
-//  organic, flowing wave bands across the pill.
-// ─────────────────────────────────────────────
-function waveNoise(x, y, W, H) {
-    // Normalise coords
-    const nx = x / W;
-    const ny = y / H;
+<div id="calibrator-ui" hidden>
+  <h3>WEAPON CALIBRATOR</h3>
+  <div class="cal-row"><label>Scale</label><span id="cal-s-val">1.00</span></div>
+  <input type="range" id="cal-s" min="0.05" max="3" step="0.01" value="1">
+  <div class="cal-row"><label>Pos X</label><span id="cal-x-val">0</span></div>
+  <input type="range" id="cal-x" min="-1" max="1" step="0.01" value="0">
+  <div class="cal-row"><label>Pos Y</label><span id="cal-y-val">0</span></div>
+  <input type="range" id="cal-y" min="-1" max="1" step="0.01" value="0">
+  <div class="cal-row"><label>Pos Z</label><span id="cal-z-val">0</span></div>
+  <input type="range" id="cal-z" min="-1" max="1" step="0.01" value="0">
+  <div class="cal-row"><label>Rot X</label><span id="cal-rx-val">0</span></div>
+  <input type="range" id="cal-rx" min="-180" max="180" step="1" value="0">
+  <div class="cal-row"><label>Rot Y</label><span id="cal-ry-val">180</span></div>
+  <input type="range" id="cal-ry" min="-180" max="180" step="1" value="180">
+  <div class="cal-row"><label>Rot Z</label><span id="cal-rz-val">0</span></div>
+  <input type="range" id="cal-rz" min="-180" max="180" step="1" value="0">
+  <h4>Animations <button id="btn-copy-anims">COPY</button></h4>
+  <div id="anim-list" class="inspector-list">No animations</div>
+  <h4>Meshes</h4>
+  <div id="mesh-list" class="inspector-list">No meshes</div>
+  <div class="cal-buttons"><button id="btn-reset-cal">RESET</button><button id="btn-close-cal">DONE</button></div>
+</div>
 
-    // Multiple sine waves at different angles and frequencies
-    // to create moiré-like flowing contours
-    const w1 = Math.sin(nx * 28 + ny * 12) * 0.5 + 0.5;
-    const w2 = Math.sin(nx * 15 - ny * 22 + 1.3) * 0.5 + 0.5;
-    const w3 = Math.sin(nx * 8  + ny * 35 + 2.7) * 0.5 + 0.5;
-    const w4 = Math.sin(nx * 42 + ny * 5  + 0.8) * 0.5 + 0.5;
-    const w5 = Math.sin((nx + ny) * 20 + 3.1) * 0.5 + 0.5;
-    const w6 = Math.sin((nx * 2 - ny * 1.5) * 18 + 4.2) * 0.5 + 0.5;
-
-    // Blend with different weights — w1/w2 dominant, others add variation
-    return (w1 * 0.30 + w2 * 0.25 + w3 * 0.18 + w4 * 0.12 + w5 * 0.08 + w6 * 0.07);
-}
-
-// ─────────────────────────────────────────────
-//  PILL SPARKLE RING — with wavy flowing pattern
-//
-//  Instead of uniform opacity across the ring,
-//  each sparkle's visibility is modulated by
-//  multi-frequency waves. This creates flowing
-//  bands where sparkles cluster and thin out,
-//  giving the premium holographic/moiré quality.
-// ─────────────────────────────────────────────
-function drawPillSparkles() {
-    const pill   = document.querySelector('.pill-wrapper');
-    const canvas = document.getElementById('pill-canvas');
-    const W = pill.offsetWidth;
-    const H = pill.offsetHeight;
-    const dpr = window.devicePixelRatio || 1;
-
-    canvas.width  = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width  = W + 'px';
-    canvas.style.height = H + 'px';
-
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-
-    const GRID = 3.5;
-    const SIZE = 1.4;
-
-    // ── Pill geometry ─────────────────────────────────────────────────
-    // The pill is a stadium (rounded rectangle): two semicircles of
-    // radius=H/2 connected by straight top/bottom edges.
-    const radius = H / 2;
-
-    // ── Distance-from-edge function (stadium SDF) ─────────────────────
-    // Returns 0 at the outer pill edge, 1 at the very centre.
-    // This gives UNIFORM ring thickness regardless of pill aspect ratio.
-    function pillInset(px, py) {
-        // Clamp x to the straight section (between the two semicircles)
-        const cx = Math.max(radius, Math.min(px, W - radius));
-        const cy = H / 2;
-        // Distance from nearest point on the pill's medial axis
-        const dx = px - cx;
-        const dy = py - cy;
-        const distFromAxis = Math.sqrt(dx * dx + dy * dy);
-        // Normalise: 0 = edge of pill, 1 = centre axis
-        return 1 - (distFromAxis / radius);
-    }
-
-    // ── Clip to pill rounded-rect so sparkles don't poke outside curves ─
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(radius, 0);
-    ctx.lineTo(W - radius, 0);
-    ctx.arcTo(W, 0, W, radius, radius);
-    ctx.lineTo(W, H - radius);
-    ctx.arcTo(W, H, W - radius, H, radius);
-    ctx.lineTo(radius, H);
-    ctx.arcTo(0, H, 0, H - radius, radius);
-    ctx.lineTo(0, radius);
-    ctx.arcTo(0, 0, radius, 0, radius);
-    ctx.closePath();
-    ctx.clip();
-
-    // ── 3-pass blur rendering ──────────────────────────────────────────
-    // inset: 0=edge, 1=centre. Sparkles only in the outer band.
-    // Top sparkles get extra blur added via vertical position.
-    const passes = [
-        { maxInset: 0.18, minInset: 0,    blur: 0   },  // Outer: crisp
-        { maxInset: 0.28, minInset: 0.18, blur: 1.0 },  // Mid: soft
-        { maxInset: 0.42, minInset: 0.28, blur: 2.0 },  // Inner: dissolve
-    ];
-
-    for (const pass of passes) {
-        ctx.save();
-        // Base blur from distance pass + extra blur for top half (vertical gradient)
-        // Top of pill (ny=0) gets +1.5px extra blur, bottom gets +0
-        // This softens the top sparkles without nuking them
-        // We apply the max possible here; per-sparkle we can't change filter mid-draw
-        // So we split into sub-passes for top and bottom
-        const subPasses = [
-            { yMin: 0.0,  yMax: 0.45, extraBlur: 1.5 },  // Top: slightly softer
-            { yMin: 0.45, yMax: 1.0,  extraBlur: 0   },  // Bottom: as-is
-        ];
-
-        for (const sub of subPasses) {
-            ctx.save();
-            const totalBlur = pass.blur + sub.extraBlur;
-            if (totalBlur > 0) ctx.filter = `blur(${totalBlur}px)`;
-
-            for (let y = Math.floor(H * sub.yMin); y < H * sub.yMax; y += GRID) {
-                for (let x = 0; x < W; x += GRID) {
-                    const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
-                    const px = x + ox;
-                    const py = y;
-
-                    // How far inward from the pill edge (0=edge, 1=centre)
-                    const inset = pillInset(px, py);
-
-                    // Skip sparkles outside this pass's band
-                    if (inset < pass.minInset || inset >= pass.maxInset) continue;
-                    if (inset < 0) continue;
-
-                    // Wave at this point
-                    const wave = waveNoise(px, py, W, H);
-                    const waveFactor = Math.pow(wave, 0.7);
-
-                    // ── Organic inner boundary ──────────────────────────────────
-                    const innerLimit = 0.38 + (waveFactor - 0.5) * 0.22;
-                    if (inset > innerLimit) continue;
-
-                    // Ring alpha: full at edge, fading toward inner limit
-                    const ringAlpha = Math.min(1, (innerLimit - inset) / 0.20);
-
-                    // Vertical lighting: top bright, bottom dim
-                    const vertFactor = 0.40 + 0.60 * (1 - py / H);
-
-                    // Colour: top=cyan-white, bottom=dim teal
-                    const t = py / H;
-                    const r = Math.round(190 + (70  - 190) * t);
-                    const g = Math.round(252 + (185 - 252) * t);
-                    const b = Math.round(235 + (162 - 235) * t);
-
-                    const alpha = ringAlpha * waveFactor * vertFactor;
-                    if (alpha < 0.03) continue;
-
-                    const bloomScale = totalBlur > 0 ? 1.0 + totalBlur * 0.2 : 1.0;
-                    const sizeVar = SIZE * (0.8 + waveFactor * 0.4) * bloomScale;
-
-                    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-                    drawSparkle(ctx, px, py, sizeVar);
-                }
-            }
-
-            ctx.restore();
-        }
-
-        ctx.restore();
-    }
-
-    ctx.restore(); // restore clip
-}
-
-// ─────────────────────────────────────────────
-//  BACKGROUND SPARKLE FIELD — also wavy
-// ─────────────────────────────────────────────
-function drawBgSparkles() {
-    const canvas = document.getElementById('bg-canvas');
-    const dpr = window.devicePixelRatio || 1;
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-
-    canvas.width  = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width  = W + 'px';
-    canvas.style.height = H + 'px';
-
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-
-    const GRID = 8;
-    const SIZE = 1.1;
-
-    const focusX = W * 0.55;
-    const focusY = H * 0.18;
-    const spread = Math.min(W, H) * 0.42;
-
-    for (let y = 0; y < H * 0.6; y += GRID) {
-        for (let x = 0; x < W; x += GRID) {
-            const ox = (Math.floor(y / GRID) % 2 === 0) ? 0 : GRID / 2;
-            const px = x + ox;
-            const py = y;
-
-            const distFromFocus = Math.sqrt(
-                Math.pow(px - focusX, 2) + Math.pow(py - focusY, 2)
-            );
-            const distAlpha = Math.max(0, 1 - distFromFocus / spread);
-
-            // Wave pattern for background too
-            const wave = waveNoise(px * 0.7, py * 0.7, W, H);
-
-            const alpha = distAlpha * wave * 0.40;
-            if (alpha < 0.02) continue;
-
-            const sizeVar = SIZE * (0.7 + wave * 0.6);
-            ctx.fillStyle = `rgba(88, 212, 188, ${alpha})`;
-            drawSparkle(ctx, px, py, sizeVar);
-        }
-    }
-}
-
-// Draw both on load
-window.addEventListener('load', () => {
-    drawPillSparkles();
-    drawBgSparkles();
-});
-
-// Redraw on resize
-window.addEventListener('resize', () => {
-    drawPillSparkles();
-    drawBgSparkles();
-});
-</script>
+<script type="module" src="./game.js"></script>
 
 </body>
 </html>
