@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
-import { Capsule } from 'three/addons/math/Capsule.js';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
 import RAPIER from '@dimforge/rapier3d-compat';
 
@@ -280,13 +279,8 @@ const POOL = { impacts:[], decals:[], shells:[], tracers:[] };
 // Scratch vectors (reused every frame - zero allocations in hot loop)
 const _v1=new THREE.Vector3(), _v2=new THREE.Vector3(), _v3=new THREE.Vector3();
 const _q=new THREE.Quaternion(), _fwd=new THREE.Vector3(), _right=new THREE.Vector3(), _move=new THREE.Vector3();
-const _down=new THREE.Vector3(0,-1,0), _rayO=new THREE.Vector3();
 const _tPos=new THREE.Vector3();
-const _floorRay=new THREE.Raycaster(); _floorRay.firstHitOnly=true;
 const _hitRay=new THREE.Raycaster(); _hitRay.firstHitOnly=true;
-const _capsule=new Capsule(new THREE.Vector3(), new THREE.Vector3(), 0.3);
-const _capLine=new THREE.Line3();
-const _triN=new THREE.Vector3(), _triP=new THREE.Vector3(), _capP=new THREE.Vector3();
 
 /* === WORLD BUILD === */
 let hasCustomMap = false; // track if user loaded a custom GLB
@@ -673,9 +667,6 @@ bindBtn('btn-fire',()=>{if(S.isInspecting) cancelInspect(); S.isFiring=true;},()
 bindBtn('btn-ads',()=>toggleAds()); bindBtn('btn-reload',()=>triggerReload()); bindBtn('btn-jump',()=>triggerJump()); bindBtn('btn-inspect',()=>triggerInspect());
 
 /* === PLAYER UPDATE === */
-const FLOOR_SAMPLES=[{x:0,z:0},{x:CFG.playerRadius*0.7,z:0},{x:-CFG.playerRadius*0.7,z:0},{x:0,z:CFG.playerRadius*0.7},{x:0,z:-CFG.playerRadius*0.7}];
-// Reduced floor samples for custom maps (BVH handles collision)
-const FLOOR_SAMPLES_LITE=[{x:0,z:0},{x:CFG.playerRadius*0.6,z:0},{x:0,z:CFG.playerRadius*0.6}];
 function updatePlayer(dt) {
   // Input
   let mx=0,my=0,sprint=false;
