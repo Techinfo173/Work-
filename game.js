@@ -771,9 +771,10 @@ function updatePlayer(dt) {
 
   // Camera
   worldCamera.position.copy(S.pos);
-  if (S.walkAmt > 0.001) {
-    // Smooth bob: vertical at 2x phase rate (one bump per step), horizontal at 1x.
-    // No Math.abs() - that creates a sharp cusp every step which reads as jitter.
+  // Only add procedural camera bob when we DON'T have a baked walk/run anim.
+  // If a baked clip is active, it already bobs the weapon - adding camera bob
+  // on top creates a double-bounce that reads as vibration/jitter.
+  if (S.walkAmt > 0.001 && !(S.weaponActions.walk || S.weaponActions.run)) {
     worldCamera.position.y += Math.sin(S.walkPhase * 2) * 0.035 * S.walkAmt;
     worldCamera.position.x += Math.cos(S.walkPhase) * 0.025 * S.walkAmt;
   }
