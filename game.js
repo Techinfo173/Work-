@@ -115,7 +115,7 @@ document.addEventListener('fullscreenchange',()=>setTimeout(onResize,100));
 /* === STATE === */
 const S = {
   running:false, yaw:0, pitch:0, pos:new THREE.Vector3(0,CFG.playerHeight,0), vel:new THREE.Vector3(),
-  isGrounded:true, walkPhase:0, swayX:0, swayY:0, tilt:0,
+  isGrounded:true, walkPhase:0, walkAmt:0, swayX:0, swayY:0, tilt:0,
   isFiring:false, isAds:false, isReloading:false, isInspecting:false, isSprinting:false,
   ammo:CFG.magSize, reserve:CFG.reserveStart, lastFire:0, fireCount:0, kills:0, screenFlash:0,
   weaponWrapper:null, weaponMixer:null, weaponActions:{}, currentAnim:null, defaultWeaponTransform:null,
@@ -747,9 +747,21 @@ function updatePlayer(dt) {
     if (S.pos.y < -50) { S.pos.set(0, CFG.playerHeight, 0); S.vel.set(0,0,0); }
   }
 
-  // Walk phase
+  // Walk phase - advance at a fixed cadence based on speed (decoupled from
+  // per-frame velocity wobble) so the gun bob frequency is rock-steady.
   const spd2D=Math.hypot(S.vel.x,S.vel.z);
-  if(spd2D>0.1&&S.isGrounded){const prev=S.walkPhase; S.walkPhase+=dt*(S.isSprinting?spd2D*0.8:spd2D*1.2); if(Math.sin(prev)*Math.sin(S.walkPhase)<=0) playFootstep();}else{S.walkPhase=THREE.MathUtils.lerp(S.walkPhase,0,dt*10);}
+  const moving = spd2D > 0.1 && S.isGrounded;
+  // Smoothly ramp the bob *amount* in/out so stopping doesn't snap the gun.
+  S.walkAmt = THREE.MathUtils.lerp(S.walkAmt, moving ? Math.min(1, spd2D / CFG.playerSpeed) : 0, dt * 6);
+  if (moving) {
+    const prev = S.walkPhase;
+    // Step cadence: ~2 Hz at walk, ~2.6 Hz at sprint. Independent of frame jitter.
+    const cadence = S.isSprinting ? 8.0 : 6.2;
+    S.walkPhase += dt * cadence;
+    if (Math.sin(prev) * Math.sin(S.walkPhase) <= 0) playFootstep();
+  }
+  // Don't lerp the *phase* back to 0 - that creates a visible flick. Just let
+  // walkAmt fade out; the phase keeps advancing harmlessly behind the curtain.
 
   S.swayX=THREE.MathUtils.clamp(THREE.MathUtils.lerp(S.swayX,0,dt*7),-0.05,0.05);
   S.swayY=THREE.MathUtils.clamp(THREE.MathUtils.lerp(S.swayY,0,dt*7),-0.05,0.05);
@@ -759,7 +771,12 @@ function updatePlayer(dt) {
 
   // Camera
   worldCamera.position.copy(S.pos);
-  if(spd2D>0.1&&S.isGrounded){worldCamera.position.y+=Math.abs(Math.sin(S.walkPhase))*0.06; worldCamera.position.x+=Math.cos(S.walkPhase*0.5)*0.03;}
+  if (S.walkAmt > 0.001) {
+    // Smooth bob: vertical at 2x phase rate (one bump per step), horizontal at 1x.
+    // No Math.abs() - that creates a sharp cusp every step which reads as jitter.
+    worldCamera.position.y += Math.sin(S.walkPhase * 2) * 0.035 * S.walkAmt;
+    worldCamera.position.x += Math.cos(S.walkPhase) * 0.025 * S.walkAmt;
+  }
   const sk=springs.shake.val; if(sk>0.01){worldCamera.position.x+=(Math.random()-0.5)*sk*0.05; worldCamera.position.y+=(Math.random()-0.5)*sk*0.05;}
   worldCamera.rotation.set(S.pitch,S.yaw,S.tilt,'YXZ');
 }
@@ -859,9 +876,20 @@ function updateWeapon(dt,time) {
   const rX=THREE.MathUtils.lerp(CFG.gunHipRot.x,CFG.gunAdsRot.x,adsT);
   const rY=THREE.MathUtils.lerp(CFG.gunHipRot.y,CFG.gunAdsRot.y,adsT);
   const rZ=THREE.MathUtils.lerp(CFG.gunHipRot.z,CFG.gunAdsRot.z,adsT);
-  const spd2D=Math.hypot(S.vel.x,S.vel.z), sn=Math.min(1.2,spd2D/CFG.playerSpeed), bs=adsFac*0.6+0.1;
+  const spd2D=Math.hypot(S.vel.x,S.vel.z), bs=adsFac*0.6+0.1;
   let bX=0,bY=0,bRX=0,bRZ=0;
-  if(!(S.weaponActions.walk||S.weaponActions.run)){bX=Math.cos(S.walkPhase*0.5)*0.01*sn*bs; bY=Math.abs(Math.sin(S.walkPhase*0.5))*0.015*sn*bs; bRZ=Math.cos(S.walkPhase*0.5)*0.02*sn*bs; bRX=Math.sin(S.walkPhase)*0.015*sn*bs;}
+  // Only apply procedural bob when we don't have a baked walk/run animation.
+  // Use S.walkAmt (smoothly faded) instead of raw speed so the gun doesn't
+  // pop in/out on the first/last frame of motion. All axes share the same
+  // base frequency (S.walkPhase) for a natural figure-8 sway - no axis runs
+  // at a doubled rate, which is what was reading as "vibration".
+  if (!(S.weaponActions.walk || S.weaponActions.run)) {
+    const w = S.walkAmt * bs;
+    bX  = Math.cos(S.walkPhase)     * 0.012 * w;
+    bY  = Math.sin(S.walkPhase * 2) * 0.010 * w;   // one bump per step
+    bRZ = Math.cos(S.walkPhase)     * 0.018 * w;
+    bRX = Math.sin(S.walkPhase * 2) * 0.010 * w;   // matches vertical bump
+  }
 
   weaponPivot.position.set(_tPos.x+bX+S.swayX+springs.side.val*0.05+springs.rPosX.val, _tPos.y+bY+S.swayY+springs.rise.val*0.02+springs.rPosY.val, _tPos.z+springs.kick.val+springs.rPosZ.val);
   weaponPivot.rotation.set(rX+springs.rise.val+bRX-S.swayY*1.2+springs.rRotX.val, rY+springs.side.val*0.8+S.swayX*1.2+springs.rRotY.val, rZ+springs.twist.val+bRZ-S.swayX*0.4+springs.rRotZ.val);
