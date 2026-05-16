@@ -115,7 +115,7 @@ document.addEventListener('fullscreenchange',()=>setTimeout(onResize,100));
 /* === STATE === */
 const S = {
   running:false, yaw:0, pitch:0, pos:new THREE.Vector3(0,CFG.playerHeight,0), vel:new THREE.Vector3(),
-  isGrounded:true, walkPhase:0, walkAmt:0, swayX:0, swayY:0, tilt:0,
+  isGrounded:true, walkPhase:0, walkAmt:0, locoSpeed:0, swayX:0, swayY:0, tilt:0,
   isFiring:false, isAds:false, isReloading:false, isInspecting:false, isSprinting:false,
   ammo:CFG.magSize, reserve:CFG.reserveStart, lastFire:0, fireCount:0, kills:0, screenFlash:0,
   weaponWrapper:null, weaponMixer:null, weaponActions:{}, currentAnim:null, defaultWeaponTransform:null,
@@ -829,10 +829,25 @@ function updateWeapon(dt,time) {
   if (S.weaponMixer && (S.weaponActions.idle || S.weaponActions.walk || S.weaponActions.run)) {
     const spd2D = Math.hypot(S.vel.x, S.vel.z);
 
+    // Smooth the speed used for animation. Rapier's character controller produces
+    // small per-frame velocity wobble on slopes / autostep (sub-frame collision
+    // corrections), and feeding that raw into clip.timeScale makes the *playback
+    // speed itself* jitter every frame -> the gun appears to vibrate while running.
+    // 8/sec exponential smoothing kills the wobble without adding noticeable lag.
+    S.locoSpeed += (spd2D - S.locoSpeed) * Math.min(1, dt * 8);
+    const animSpeed = S.locoSpeed;
+
     // Pick the locomotion clip we *want* to be visible right now.
+    // Use the smoothed speed (not raw spd2D, not isSprinting) with a hysteresis
+    // band so we don't flap walk<->run when the controller briefly reports
+    // ungrounded on a step (which would clear isSprinting for one frame).
+    const runIn  = CFG.playerSpeed * 1.05;  // need to exceed walk-cap by 5% to start running
+    const runOut = CFG.playerSpeed * 0.95;  // and drop below 95% to fall back to walk
+    const wasRun = S.locoTarget === S.weaponActions.run;
     let target = S.weaponActions.idle || null;
-    if (spd2D > 0.5) {
-      target = (S.isSprinting && S.weaponActions.run)
+    if (animSpeed > 0.5) {
+      const wantRun = wasRun ? animSpeed > runOut : animSpeed > runIn;
+      target = (wantRun && S.weaponActions.run)
         ? S.weaponActions.run
         : (S.weaponActions.walk || S.weaponActions.idle);
     }
@@ -855,12 +870,18 @@ function updateWeapon(dt,time) {
       a.setEffectiveWeight(cur + (want - cur) * k);
     });
 
-    // Match clip speed to player speed (only if locomotion layer is at all visible)
+    // Match clip speed to player speed (only if locomotion layer is at all visible).
+    // Uses the smoothed animSpeed so playback rate is stable instead of jittering
+    // every frame with raw velocity wobble.
     if (S.locoTarget === S.weaponActions.walk || S.locoTarget === S.weaponActions.run) {
       const base = S.locoTarget === S.weaponActions.run
         ? CFG.playerSpeed * CFG.sprintMult
         : CFG.playerSpeed;
-      S.locoTarget.timeScale = THREE.MathUtils.clamp(spd2D / base, 0.5, 2);
+      const desired = THREE.MathUtils.clamp(animSpeed / base, 0.5, 2);
+      // Extra smoothing on timeScale itself - even with smoothed speed we don't
+      // want abrupt rate changes when crossing thresholds.
+      const cur = S.locoTarget.timeScale;
+      S.locoTarget.timeScale = cur + (desired - cur) * Math.min(1, dt * 6);
     }
   }
 
