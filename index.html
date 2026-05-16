@@ -3,183 +3,1182 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Void Engine - Tactical Combat</title>
+<title>VOID ENGINE // TAC-OPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
-:root { --accent: #ffaa00; }
-html, body { margin:0; padding:0; width:100vw; height:100vh; background:#000; overflow:hidden; overscroll-behavior:none; touch-action:none; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; color:#fff; }
-canvas { display:block; position:absolute; inset:0; width:100%; height:100%; z-index:1; }
-[hidden] { display:none !important; }
+/* =============================================================
+   VOID ENGINE — TAC-OPS UI
+   Inspired by Call of Duty (Modern Warfare / Warzone) HUD design
+   - Bebas Neue for big tactical headers
+   - Rajdhani for HUD body text
+   - Share Tech Mono for telemetry / numbers
+   ============================================================= */
 
-#portrait-lock { position:fixed; inset:0; background:#050608; color:var(--accent); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
-@media screen and (orientation:landscape) { #portrait-lock { display:none !important; } }
-#portrait-lock h1 { font-size:8vw; letter-spacing:2px; text-transform:uppercase; margin-bottom:10px; }
+:root {
+  --accent: #ff8800;
+  --accent-bright: #ffaa33;
+  --accent-glow: rgba(255, 136, 0, 0.55);
+  --hud-fg: #ececec;
+  --hud-dim: rgba(255, 255, 255, 0.55);
+  --hud-faint: rgba(255, 255, 255, 0.25);
+  --bg-deep: #06080b;
+  --bg-panel: rgba(8, 10, 14, 0.78);
+  --bg-panel-solid: #0c1117;
+  --border-tac: rgba(255, 255, 255, 0.12);
+  --danger: #ff3a3a;
+  --safe: #4dff7c;
+  --info: #5ec8ff;
+  --shadow-hard: 0 2px 0 rgba(0,0,0,0.9), 0 4px 12px rgba(0,0,0,0.8);
+}
 
-#start-screen { position:fixed; inset:0; background:radial-gradient(circle at center,#1a202c 0%,#000 100%); z-index:9000; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; overflow-y:auto; padding:40px 10px; }
-.boot-text { font-size:28px; font-weight:900; margin-top:40px; letter-spacing:6px; margin-bottom:30px; text-shadow:0 0 20px rgba(255,255,255,0.5); }
-#loading-text { color:var(--accent); font-weight:bold; letter-spacing:3px; animation:pulse 1s infinite; margin-bottom:30px; }
-@keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
-#btn-start { background:rgba(255,170,0,0.15); border:2px solid var(--accent); color:#fff; padding:20px 60px; font-size:20px; font-weight:900; letter-spacing:3px; border-radius:4px; box-shadow:0 0 20px rgba(255,170,0,0.3); text-transform:uppercase; cursor:pointer; transition:transform 0.1s; }
-#btn-start:active { transform:scale(0.95); background:rgba(255,170,0,0.4); }
-.upload-row { margin-top:30px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center; max-width:800px; }
-.upload-btn,.clear-btn { border:1px solid; color:#fff; padding:10px 20px; cursor:pointer; border-radius:4px; font-weight:bold; font-family:monospace; }
-.upload-btn.weapon { background:rgba(100,200,100,0.2); border-color:#8f8; }
-.upload-btn.map { background:rgba(255,100,100,0.2); border-color:#f88; }
-.upload-btn.sky { background:rgba(255,255,255,0.1); border-color:#fff; }
-.clear-btn { background:rgba(255,50,50,0.5); border-color:#f00; }
-#error-toast { margin-top:20px; padding:12px 20px; background:rgba(255,0,0,0.2); border:1px solid #f44; color:#fcc; border-radius:4px; max-width:600px; text-align:center; font-family:monospace; font-size:13px; }
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  width: 100vw; height: 100vh;
+  background: var(--bg-deep);
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+  color: var(--hud-fg);
+  font-weight: 500;
+}
+canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+[hidden] { display: none !important; }
 
-#hud { position:fixed; inset:0; z-index:10; pointer-events:none; }
-#crosshair { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:4px; height:4px; background:rgba(255,255,255,0.9); border-radius:50%; transition:opacity 0.15s; }
-.ch-line { position:absolute; background:rgba(255,255,255,0.8); box-shadow:0 0 3px rgba(0,0,0,0.8); }
-.ch-t { top:-12px; left:1px; width:2px; height:8px; } .ch-b { bottom:-12px; left:1px; width:2px; height:8px; }
-.ch-l { left:-12px; top:1px; width:8px; height:2px; } .ch-r { right:-12px; top:1px; width:8px; height:2px; }
+button, label { font-family: inherit; }
 
-#hit-marker { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:40px; height:40px; opacity:0; pointer-events:none; transition:transform 0.1s,opacity 0.1s; }
-.hm-line { position:absolute; background:#fff; width:2px; height:12px; top:14px; left:19px; box-shadow:0 0 4px #000; }
-.hm-1{transform:rotate(45deg) translateY(-20px)} .hm-2{transform:rotate(135deg) translateY(-20px)} .hm-3{transform:rotate(225deg) translateY(-20px)} .hm-4{transform:rotate(315deg) translateY(-20px)}
+/* ============== PORTRAIT LOCK ============== */
+#portrait-lock {
+  position: fixed; inset: 0;
+  background: var(--bg-deep);
+  color: var(--accent);
+  z-index: 9999;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+}
+@media screen and (orientation: landscape) {
+  #portrait-lock { display: none !important; }
+}
+#portrait-lock h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 12vw; letter-spacing: 4px;
+  margin: 0 0 8px;
+  text-shadow: 0 0 30px var(--accent-glow);
+}
+#portrait-lock p {
+  font-family: 'Share Tech Mono', monospace;
+  letter-spacing: 3px;
+  font-size: 3.5vw;
+  color: var(--hud-dim);
+}
 
-#ammo-widget { position:absolute; bottom:30px; right:120px; display:flex; align-items:baseline; background:linear-gradient(90deg,transparent,rgba(0,0,0,0.6)); padding:8px 25px; border-right:4px solid var(--accent); text-shadow:0 2px 4px #000; }
-#status-indicator { position:absolute; bottom:65px; right:5px; color:var(--accent); font-weight:900; font-size:14px; letter-spacing:2px; text-transform:uppercase; opacity:0; transition:opacity 0.2s; }
-#ammo-current { font-size:46px; font-weight:900; color:#fff; margin-right:6px; font-family:monospace; letter-spacing:-2px; }
-#ammo-max { font-size:22px; color:#aaa; font-weight:bold; font-family:monospace; }
-#kill-widget { margin-left:20px; border-left:1px solid rgba(255,255,255,0.2); padding-left:20px; }
-#kill-widget .label { font-size:10px; color:#888; font-weight:bold; letter-spacing:1px; }
-#kill-count { font-size:28px; font-weight:900; color:#ffcc00; font-family:monospace; }
+/* ============== START SCREEN ============== */
+#start-screen {
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(255,136,0,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 100%, rgba(94,200,255,0.04) 0%, transparent 60%),
+    linear-gradient(180deg, #050709 0%, #0a0e14 100%);
+  z-index: 9000;
+  display: flex; flex-direction: column;
+  align-items: stretch; justify-content: space-between;
+  overflow: hidden;
+}
+/* Animated tactical grid background */
+#start-screen::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+  animation: gridDrift 20s linear infinite;
+  pointer-events: none;
+}
+@keyframes gridDrift {
+  0%   { background-position: 0 0, 0 0; }
+  100% { background-position: 60px 60px, 60px 60px; }
+}
+/* Scanline overlay */
+#start-screen::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(transparent 50%, rgba(0,0,0,0.08) 50%);
+  background-size: 100% 4px;
+  pointer-events: none;
+  opacity: 0.4;
+  z-index: 1;
+}
 
-#touch-left { position:absolute; top:0; left:0; width:50vw; height:100vh; pointer-events:auto; }
-#touch-right { position:absolute; top:0; right:0; width:50vw; height:100vh; pointer-events:auto; }
-#joy-base { position:absolute; width:130px; height:130px; border-radius:50%; background:radial-gradient(circle,rgba(255,255,255,0.05),transparent); border:2px solid rgba(255,255,255,0.1); transform:translate(-50%,-50%); display:none; pointer-events:none; }
-#joy-stick { position:absolute; top:50%; left:50%; width:50px; height:50px; border-radius:50%; background:rgba(255,255,255,0.3); transform:translate(-50%,-50%); box-shadow:0 0 10px rgba(0,0,0,0.5); }
+.ss-topbar {
+  position: relative; z-index: 2;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--border-tac);
+  background: linear-gradient(180deg, rgba(0,0,0,0.5), transparent);
+}
+.ss-topbar .brand {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px; color: var(--hud-dim);
+  letter-spacing: 2px;
+}
+.ss-topbar .brand .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--safe);
+  box-shadow: 0 0 8px var(--safe);
+  animation: dotPulse 1.5s ease-in-out infinite;
+}
+@keyframes dotPulse {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.ss-topbar .stamp {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px; color: var(--hud-faint);
+  letter-spacing: 2px;
+}
 
-.btn-action { position:absolute; border-radius:50%; background:rgba(255,255,255,0.1); border:2px solid rgba(255,255,255,0.25); color:#fff; font-weight:900; letter-spacing:1px; display:flex; align-items:center; justify-content:center; pointer-events:auto; backdrop-filter:blur(2px); cursor:pointer; font-family:inherit; }
-.btn-action:active { background:rgba(255,170,0,0.4); border-color:var(--accent); transform:scale(0.9); }
-#btn-fire { bottom:35px; right:25px; width:85px; height:85px; font-size:20px; }
-#btn-ads { bottom:140px; right:50px; width:65px; height:65px; font-size:15px; }
-#btn-reload { bottom:140px; right:130px; width:65px; height:65px; font-size:15px; }
-#btn-inspect { bottom:35px; right:130px; width:65px; height:65px; font-size:15px; }
-#btn-jump { bottom:35px; right:210px; width:65px; height:65px; font-size:15px; }
+.ss-hero {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  flex: 1;
+  padding: 20px;
+  text-align: center;
+}
+.ss-hero .preheader {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 8px;
+  margin-bottom: 8px;
+  opacity: 0.85;
+}
+.ss-hero h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(56px, 11vw, 140px);
+  margin: 0;
+  letter-spacing: 6px;
+  line-height: 0.9;
+  background: linear-gradient(180deg, #fff 0%, #b8b8b8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 20px rgba(255,136,0,0.25));
+  position: relative;
+}
+.ss-hero h1::after {
+  content: '';
+  display: block;
+  width: 60%;
+  height: 2px;
+  margin: 12px auto 0;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.ss-hero .subhead {
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  font-size: clamp(12px, 1.6vw, 16px);
+  letter-spacing: 6px;
+  color: var(--hud-dim);
+  margin-top: 14px;
+}
 
-#flash-overlay { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:5; }
-#vignette { position:fixed; inset:0; pointer-events:none; z-index:4; background:radial-gradient(circle at center,transparent 20%,rgba(0,0,0,0.85) 100%); transition:opacity 0.3s ease; opacity:0.55; }
+#loading-text {
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--accent);
+  letter-spacing: 4px;
+  margin-top: 28px;
+  font-size: 13px;
+  animation: loadPulse 1.2s ease-in-out infinite;
+}
+@keyframes loadPulse {
+  0%,100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
 
-#compass { position:absolute; top:20px; left:50%; transform:translateX(-50%); width:300px; height:30px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.1); border-radius:2px; overflow:hidden; backdrop-filter:blur(4px); }
-#compass-indicator { position:absolute; top:0; left:50%; transform:translateX(-50%); color:var(--accent); font-weight:bold; z-index:2; font-size:18px; line-height:30px; text-shadow:0 0 5px var(--accent); }
-#bearing-strip { position:absolute; top:0; left:50%; height:100%; display:flex; align-items:center; color:rgba(255,255,255,0.7); font-size:12px; font-weight:bold; white-space:nowrap; gap:25px; will-change:transform; }
-.deg { color:rgba(255,255,255,0.3); }
+#btn-start {
+  position: relative;
+  margin-top: 28px;
+  background: linear-gradient(180deg, rgba(255,136,0,0.15), rgba(255,136,0,0.05));
+  border: 2px solid var(--accent);
+  color: #fff;
+  padding: 18px 64px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  letter-spacing: 8px;
+  cursor: pointer;
+  text-transform: uppercase;
+  clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+  box-shadow:
+    0 0 30px rgba(255,136,0,0.35),
+    inset 0 0 20px rgba(255,136,0,0.1);
+  transition: transform 0.08s, box-shadow 0.2s;
+}
+#btn-start:hover {
+  box-shadow:
+    0 0 50px rgba(255,136,0,0.6),
+    inset 0 0 30px rgba(255,136,0,0.2);
+}
+#btn-start:active {
+  transform: scale(0.97);
+  background: linear-gradient(180deg, rgba(255,136,0,0.4), rgba(255,136,0,0.15));
+}
+#btn-start::before, #btn-start::after {
+  content: '▶';
+  position: absolute;
+  top: 50%;
+  font-size: 14px;
+  color: var(--accent);
+  transform: translateY(-50%);
+}
+#btn-start::before { left: 18px; }
+#btn-start::after { right: 18px; transform: translateY(-50%) scaleX(-1); }
 
-#btn-fullscreen { position:absolute; top:20px; right:20px; z-index:100; width:44px; height:44px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:4px; display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; backdrop-filter:blur(4px); }
-#btn-calibrator { position:absolute; top:20px; right:80px; z-index:100; width:44px; height:44px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:4px; display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; backdrop-filter:blur(4px); font-family:monospace; font-weight:bold; font-size:11px; pointer-events:auto; }
-#btn-phys-cal { position:absolute; top:20px; right:140px; z-index:100; width:44px; height:44px; background:rgba(0,0,0,0.5); border:1px solid rgba(120,200,255,0.4); border-radius:4px; display:flex; align-items:center; justify-content:center; color:#9cf; cursor:pointer; backdrop-filter:blur(4px); font-family:monospace; font-weight:bold; font-size:11px; pointer-events:auto; }
-#physics-ui { position:fixed; right:20px; top:80px; background:rgba(0,0,0,0.85); border:1px solid #6cf; padding:15px; color:#fff; z-index:10002; font-family:monospace; width:280px; border-radius:4px; pointer-events:auto; max-height:85vh; overflow-y:auto; }
-#physics-ui h3 { margin:0 0 10px; font-size:14px; text-align:center; color:#6cf; border-bottom:1px solid #555; padding-bottom:6px; }
-#physics-ui input[type=range] { width:100%; margin-bottom:8px; }
-#physics-ui .help { font-size:10px; color:#789; margin:8px 0 12px; line-height:1.4; }
-#btn-reset-phys { background:rgba(255,50,50,0.5); border:1px solid #f00; }
-#btn-close-phys { background:#444; border:1px solid #666; flex:2; }
+/* === LOADOUT (operator cards) === */
+.ss-loadout {
+  position: relative; z-index: 2;
+  padding: 20px 28px 28px;
+  border-top: 1px solid var(--border-tac);
+  background: linear-gradient(0deg, rgba(0,0,0,0.6), transparent);
+}
+.ss-loadout .ll-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 16px;
+  letter-spacing: 6px;
+  color: var(--hud-dim);
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.ss-loadout .ll-title::before {
+  content: '';
+  width: 14px; height: 2px;
+  background: var(--accent);
+  display: inline-block;
+}
+.ss-loadout .cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  max-width: 1200px;
+}
+.op-slot { display: flex; flex-direction: column; gap: 6px; }
+.op-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(20,24,30,0.7), rgba(10,12,16,0.7));
+  border: 1px solid var(--border-tac);
+  border-left: 3px solid var(--accent);
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 8px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.08s;
+}
+.op-card:hover { background: linear-gradient(180deg, rgba(30,36,46,0.8), rgba(15,18,24,0.8)); }
+.op-card:active { transform: translateY(1px); }
+.op-card .op-tag {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+.op-card .op-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: #fff;
+}
+.op-card .op-hint {
+  font-size: 11px;
+  color: var(--hud-faint);
+  letter-spacing: 1px;
+}
+.op-card.weapon { border-left-color: #5eff8a; }
+.op-card.weapon .op-tag { color: #5eff8a; }
+.op-card.map { border-left-color: #ff5e5e; }
+.op-card.map .op-tag { color: #ff5e5e; }
+.op-card.sky { border-left-color: #5ec8ff; }
+.op-card.sky .op-tag { color: #5ec8ff; }
+.clear-btn {
+  background: rgba(255,80,80,0.12);
+  border: 1px solid rgba(255,80,80,0.45);
+  color: #ff9999;
+  padding: 7px 12px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.clear-btn:hover { background: rgba(255,80,80,0.22); color: #ffd0d0; }
 
-#calibrator-ui { position:fixed; right:20px; top:80px; background:rgba(0,0,0,0.85); border:1px solid var(--accent); padding:15px; color:#fff; z-index:10002; font-family:monospace; width:280px; border-radius:4px; pointer-events:auto; max-height:85vh; overflow-y:auto; }
-#calibrator-ui h3 { margin:0 0 10px; font-size:14px; text-align:center; color:var(--accent); border-bottom:1px solid #555; padding-bottom:6px; }
-.cal-row { display:flex; justify-content:space-between; margin-bottom:2px; font-size:12px; }
-#calibrator-ui input[type=range] { width:100%; margin-bottom:8px; }
-#calibrator-ui h4 { margin:12px 0 5px; font-size:11px; color:var(--accent); border-top:1px solid #444; padding-top:8px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center; }
-#calibrator-ui h4 button { background:var(--accent); color:#000; border:none; padding:2px 6px; font-size:9px; cursor:pointer; border-radius:2px; font-weight:bold; }
-.inspector-list { background:rgba(0,0,0,0.4); padding:5px; border-radius:2px; font-size:11px; max-height:150px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
-.cal-buttons { display:flex; gap:8px; margin-top:15px; }
-.cal-buttons button { flex:1; padding:8px; cursor:pointer; font-weight:bold; border-radius:4px; color:#fff; font-family:inherit; }
-#btn-reset-cal { background:rgba(255,50,50,0.5); border:1px solid #f00; }
-#btn-close-cal { background:#444; border:1px solid #666; flex:2; }
+#error-toast {
+  margin-top: 14px;
+  padding: 10px 16px;
+  background: rgba(255,58,58,0.12);
+  border-left: 3px solid var(--danger);
+  color: #ffb8b8;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.ss-footer {
+  position: relative; z-index: 2;
+  padding: 10px 28px;
+  border-top: 1px solid var(--border-tac);
+  display: flex; justify-content: space-between;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; color: var(--hud-faint);
+  letter-spacing: 2px;
+}
+
+/* ============== HUD ============== */
+#hud {
+  position: fixed; inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  font-family: 'Rajdhani', sans-serif;
+}
+
+/* === Crosshair (clean dot + dynamic ticks) === */
+#crosshair {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px; height: 4px;
+  background: rgba(255,255,255,0.95);
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(0,0,0,0.9), 0 0 1px rgba(255,255,255,0.6);
+  transition: opacity 0.12s;
+}
+.ch-line {
+  position: absolute;
+  background: rgba(255,255,255,0.85);
+  box-shadow: 0 0 3px rgba(0,0,0,0.95);
+}
+.ch-t { top:-12px; left:1px; width:2px; height:7px; }
+.ch-b { bottom:-12px; left:1px; width:2px; height:7px; }
+.ch-l { left:-12px; top:1px; width:7px; height:2px; }
+.ch-r { right:-12px; top:1px; width:7px; height:2px; }
+
+/* === Hit marker (chevron style) === */
+#hit-marker {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px; height: 44px;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.1s, opacity 0.1s;
+}
+.hm-line {
+  position: absolute;
+  background: #fff;
+  width: 3px; height: 14px;
+  top: 15px; left: 20px;
+  box-shadow: 0 0 6px rgba(0,0,0,0.95), 0 0 4px rgba(255,80,80,0.4);
+  border-radius: 1px;
+}
+.hm-1 { transform: rotate(45deg)  translateY(-22px); }
+.hm-2 { transform: rotate(135deg) translateY(-22px); }
+.hm-3 { transform: rotate(225deg) translateY(-22px); }
+.hm-4 { transform: rotate(315deg) translateY(-22px); }
+
+/* === COMPASS (top-center) — modern MW style === */
+#compass {
+  position: absolute;
+  top: 16px; left: 50%;
+  transform: translateX(-50%);
+  width: 360px; height: 36px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.7), rgba(10,12,16,0.85));
+  border: 1px solid var(--border-tac);
+  border-top: 1px solid rgba(255,255,255,0.18);
+  overflow: hidden;
+  box-shadow: var(--shadow-hard);
+  /* angled corners */
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 100%, 0 100%);
+}
+#compass::before, #compass::after {
+  content: '';
+  position: absolute; top: 0; bottom: 0; width: 60px;
+  pointer-events: none;
+  z-index: 3;
+}
+#compass::before { left: 0;  background: linear-gradient(90deg, rgba(10,12,16,1), transparent); }
+#compass::after  { right: 0; background: linear-gradient(270deg, rgba(10,12,16,1), transparent); }
+
+#compass-indicator {
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  width: 0; height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid var(--accent);
+  filter: drop-shadow(0 0 4px var(--accent-glow));
+  /* keep the existing markup ('|') invisible by hiding text */
+  font-size: 0; color: transparent;
+}
+#compass-indicator::after {
+  content: '';
+  position: absolute;
+  top: -8px; left: 50%;
+  transform: translateX(-50%);
+  width: 1px; height: 36px;
+  background: linear-gradient(180deg, var(--accent), transparent);
+  opacity: 0.4;
+}
+
+#bearing-strip {
+  position: absolute;
+  top: 0; left: 50%;
+  height: 100%;
+  display: flex; align-items: center;
+  color: rgba(255,255,255,0.85);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  letter-spacing: 2px;
+  white-space: nowrap;
+  gap: 28px;
+  will-change: transform;
+  z-index: 2;
+}
+.deg { color: rgba(255,255,255,0.25); font-size: 14px; }
+
+/* === OPS PANEL (top-left) — flavor element === */
+.ops-panel {
+  position: absolute;
+  top: 16px; left: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-tac);
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--hud-dim);
+  box-shadow: var(--shadow-hard);
+  min-width: 160px;
+  pointer-events: none;
+}
+.ops-panel .ops-row { display: flex; justify-content: space-between; }
+.ops-panel .ops-label { color: var(--hud-faint); }
+.ops-panel .ops-value { color: var(--accent); font-weight: bold; }
+.ops-panel .ops-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 14px;
+  letter-spacing: 3px;
+  color: #fff;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border-tac);
+  padding-bottom: 4px;
+}
+
+/* === STATUS PANEL (bottom-left) — health-style stylized panel === */
+.status-panel {
+  position: absolute;
+  bottom: 24px; left: 16px;
+  width: 260px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-tac);
+  padding: 10px 14px;
+  font-family: 'Rajdhani', sans-serif;
+  box-shadow: var(--shadow-hard);
+  pointer-events: none;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+}
+.status-panel .sp-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 6px;
+}
+.status-panel .sp-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: #fff;
+}
+.status-panel .sp-rank {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 2px;
+}
+.bar-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 4px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--hud-dim);
+}
+.bar-row .bar-label { width: 26px; }
+.bar {
+  flex: 1; height: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border-tac);
+  position: relative;
+  overflow: hidden;
+}
+.bar-fill {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  background: linear-gradient(90deg, var(--safe), #2efc7d);
+  box-shadow: inset 0 0 6px rgba(255,255,255,0.4), 0 0 6px rgba(77,255,124,0.5);
+  width: 100%;
+}
+.bar-fill.armor { background: linear-gradient(90deg, var(--info), #3da7e8); box-shadow: inset 0 0 6px rgba(255,255,255,0.4), 0 0 6px rgba(94,200,255,0.5); width: 75%; }
+
+/* === AMMO WIDGET (bottom-right) — tactical readout === */
+#ammo-widget {
+  position: absolute;
+  bottom: 24px; right: 110px;
+  display: flex; align-items: stretch;
+  background: linear-gradient(90deg, transparent, rgba(8,10,14,0.85) 30%);
+  padding: 10px 22px 10px 60px;
+  border-right: 4px solid var(--accent);
+  box-shadow: var(--shadow-hard);
+  font-family: 'Rajdhani', sans-serif;
+  pointer-events: none;
+}
+#ammo-widget::before {
+  /* weapon icon slot */
+  content: '';
+  position: absolute;
+  left: 14px; top: 50%;
+  transform: translateY(-50%);
+  width: 40px; height: 28px;
+  background:
+    linear-gradient(180deg, transparent 60%, var(--accent) 60%, var(--accent) 65%, transparent 65%),
+    linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.3) 100%);
+  -webkit-mask:
+    linear-gradient(#000, #000) center / 100% 6px no-repeat,
+    radial-gradient(circle at 70% 50%, #000 4px, transparent 4px) center / 100% 100% no-repeat,
+    linear-gradient(#000, #000);
+  mask:
+    linear-gradient(#000, #000) center / 100% 6px no-repeat,
+    radial-gradient(circle at 70% 50%, #000 4px, transparent 4px) center / 100% 100% no-repeat,
+    linear-gradient(#000, #000);
+  opacity: 0.7;
+}
+#status-indicator {
+  position: absolute;
+  bottom: 64px; right: 14px;
+  color: var(--accent);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 16px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.18s;
+  text-shadow: 0 0 10px var(--accent-glow), 0 1px 0 #000;
+}
+#ammo-current {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 52px;
+  font-weight: 400;
+  color: #fff;
+  margin-right: 6px;
+  letter-spacing: -1px;
+  line-height: 1;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+  align-self: flex-end;
+}
+#ammo-max {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 20px;
+  color: var(--hud-dim);
+  align-self: flex-end;
+  padding-bottom: 6px;
+  letter-spacing: 1px;
+}
+#kill-widget {
+  margin-left: 18px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border-tac);
+  display: flex; flex-direction: column; justify-content: center;
+}
+#kill-widget .label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: var(--hud-faint);
+  letter-spacing: 2px;
+}
+#kill-count {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 30px;
+  color: var(--accent);
+  letter-spacing: 1px;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(255,136,0,0.4);
+}
+
+/* === Touch zones === */
+#touch-left  { position: absolute; top: 0; left: 0;  width: 50vw; height: 100vh; pointer-events: auto; }
+#touch-right { position: absolute; top: 0; right: 0; width: 50vw; height: 100vh; pointer-events: auto; }
+
+/* === Joystick === */
+#joy-base {
+  position: absolute;
+  width: 130px; height: 130px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255,255,255,0.04) 50%, transparent 70%),
+    conic-gradient(from 0deg, transparent 0%, rgba(255,136,0,0.15) 50%, transparent 100%);
+  border: 2px solid rgba(255,255,255,0.18);
+  transform: translate(-50%, -50%);
+  display: none;
+  pointer-events: none;
+  box-shadow: inset 0 0 18px rgba(0,0,0,0.5);
+}
+#joy-stick {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(255,255,255,0.2));
+  border: 1px solid rgba(255,255,255,0.4);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.7);
+}
+
+/* === Action buttons (CoD Mobile style) === */
+.btn-action {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.12), rgba(0,0,0,0.4));
+  border: 2px solid rgba(255,255,255,0.25);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+  transition: transform 0.08s, background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.btn-action:active {
+  background: radial-gradient(circle at 30% 30%, rgba(255,170,40,0.55), rgba(255,136,0,0.2));
+  border-color: var(--accent);
+  box-shadow: 0 0 18px var(--accent-glow);
+  transform: scale(0.92);
+}
+.btn-action svg { width: 36%; height: 36%; pointer-events: none; }
+.btn-action .lbl {
+  position: absolute;
+  bottom: 6px; left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,0.7);
+}
+
+#btn-fire {
+  bottom: 35px; right: 25px;
+  width: 95px; height: 95px;
+  border-color: rgba(255,80,80,0.55);
+  background: radial-gradient(circle at 30% 30%, rgba(255,90,90,0.18), rgba(120,20,20,0.35));
+}
+#btn-fire:active {
+  background: radial-gradient(circle at 30% 30%, rgba(255,90,90,0.7), rgba(255,40,40,0.45));
+  border-color: #ff4040;
+  box-shadow: 0 0 22px rgba(255,60,60,0.7);
+}
+#btn-fire svg { width: 46%; height: 46%; }
+
+#btn-ads     { bottom: 145px; right:  60px; width: 70px; height: 70px; }
+#btn-reload  { bottom: 145px; right: 145px; width: 70px; height: 70px; }
+#btn-inspect { bottom:  35px; right: 145px; width: 70px; height: 70px; }
+#btn-jump    { bottom:  35px; right: 230px; width: 70px; height: 70px; }
+
+/* === Vignette + screen flash === */
+#flash-overlay {
+  position: fixed; inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+#vignette {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  background: radial-gradient(circle at center, transparent 25%, rgba(0,0,0,0.85) 100%);
+  transition: opacity 0.3s ease;
+  opacity: 0.55;
+}
+
+/* === Top-right utility buttons === */
+.util-btn {
+  position: absolute;
+  top: 16px;
+  z-index: 100;
+  width: 44px; height: 44px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-tac);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  font-family: 'Share Tech Mono', monospace;
+  font-weight: bold;
+  font-size: 11px;
+  letter-spacing: 1px;
+  pointer-events: auto;
+  box-shadow: var(--shadow-hard);
+  transition: background 0.1s, border-color 0.1s;
+}
+.util-btn:hover { background: rgba(20,24,32,0.85); border-color: var(--accent); }
+.util-btn:active { transform: scale(0.94); }
+#btn-fullscreen { right: 16px; }
+#btn-calibrator { right: 68px; }
+#btn-phys-cal   { right: 120px; color: var(--info); border-color: rgba(120,200,255,0.35); }
+
+/* === Calibrator panels === */
+#physics-ui, #calibrator-ui {
+  position: fixed;
+  right: 16px; top: 70px;
+  background: var(--bg-panel-solid);
+  padding: 16px;
+  color: #fff;
+  z-index: 10002;
+  font-family: 'Rajdhani', sans-serif;
+  width: 290px;
+  pointer-events: auto;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+#calibrator-ui { border-left: 3px solid var(--accent); }
+#physics-ui    { border-left: 3px solid var(--info); }
+
+#physics-ui h3, #calibrator-ui h3 {
+  margin: 0 0 12px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px; letter-spacing: 3px;
+  text-align: center;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border-tac);
+  padding-bottom: 6px;
+}
+#physics-ui h3 { color: var(--info); }
+#physics-ui input[type=range], #calibrator-ui input[type=range] {
+  width: 100%;
+  margin-bottom: 10px;
+  accent-color: var(--accent);
+}
+#physics-ui input[type=range] { accent-color: var(--info); }
+
+#physics-ui .help {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; line-height: 1.5;
+  color: var(--hud-dim);
+  margin: 8px 0 12px;
+  padding: 8px;
+  background: rgba(94,200,255,0.06);
+  border-left: 2px solid var(--info);
+}
+#physics-ui .help b { color: var(--info); }
+
+.cal-row {
+  display: flex; justify-content: space-between;
+  margin-bottom: 4px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: var(--hud-dim);
+}
+.cal-row span {
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--accent);
+  font-weight: bold;
+}
+#physics-ui .cal-row span { color: var(--info); }
+
+#calibrator-ui h4 {
+  margin: 14px 0 6px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--accent);
+  border-top: 1px solid var(--border-tac);
+  padding-top: 10px;
+  text-transform: uppercase;
+  display: flex; justify-content: space-between; align-items: center;
+}
+#calibrator-ui h4 button {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  padding: 3px 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.inspector-list {
+  background: rgba(0,0,0,0.45);
+  border: 1px solid var(--border-tac);
+  padding: 6px 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  max-height: 150px;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+  color: var(--hud-dim);
+}
+
+.cal-buttons {
+  display: flex; gap: 8px;
+  margin-top: 16px;
+}
+.cal-buttons button {
+  flex: 1;
+  padding: 10px;
+  cursor: pointer;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 14px;
+  letter-spacing: 3px;
+  color: #fff;
+  border: 1px solid var(--border-tac);
+  background: rgba(255,255,255,0.05);
+  transition: background 0.1s;
+}
+.cal-buttons button:hover { background: rgba(255,255,255,0.12); }
+#btn-reset-cal, #btn-reset-phys {
+  background: rgba(255,58,58,0.25);
+  border-color: rgba(255,58,58,0.5);
+  color: #ffa6a6;
+  flex: 1;
+}
+#btn-reset-cal:hover, #btn-reset-phys:hover { background: rgba(255,58,58,0.4); }
+#btn-close-cal, #btn-close-phys {
+  flex: 2;
+  background: var(--accent);
+  color: #000;
+  font-weight: bold;
+  border-color: var(--accent);
+}
+#physics-ui #btn-close-phys { background: var(--info); }
+#btn-close-cal:hover { background: var(--accent-bright); }
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,136,0,0.3); border-radius: 3px; }
+
+/* === Mobile tweaks === */
+@media (max-width: 700px) {
+  #compass { width: 280px; height: 32px; }
+  .ops-panel { display: none; }
+  .status-panel { width: 200px; padding: 8px 10px; }
+  .status-panel .sp-name { font-size: 14px; }
+  #ammo-widget { padding: 8px 16px 8px 50px; right: 90px; bottom: 18px; }
+  #ammo-current { font-size: 40px; }
+  #kill-count { font-size: 24px; }
+  #btn-fire    { width: 80px; height: 80px; }
+  #btn-ads, #btn-reload, #btn-inspect, #btn-jump { width: 58px; height: 58px; }
+  #btn-ads     { bottom: 122px; right:  50px; }
+  #btn-reload  { bottom: 122px; right: 122px; }
+  #btn-inspect { bottom:  28px; right: 122px; }
+  #btn-jump    { bottom:  28px; right: 194px; }
+  .ss-loadout .cards { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
-<div id="portrait-lock"><h1>Rotate Device</h1><p>Landscape Required</p></div>
 
-<div id="start-screen">
-  <div class="boot-text">VOID ENGINE</div>
-  <div id="loading-text">INITIALIZING...</div>
-  <button id="btn-start" hidden>DEPLOY</button>
-  <div class="upload-row">
-    <label for="weapon-upload" class="upload-btn weapon">LOAD WEAPON (.glb)</label>
-    <input type="file" id="weapon-upload" accept=".glb,.gltf" hidden>
-    <button id="btn-clear-weapon" class="clear-btn" hidden>RESET WEAPON</button>
-    <label for="map-upload" class="upload-btn map">LOAD MAP (.glb)</label>
-    <input type="file" id="map-upload" accept=".glb,.gltf" hidden>
-    <button id="btn-clear-map" class="clear-btn" hidden>RESET MAP</button>
-    <label for="sky-upload" class="upload-btn sky">LOAD SKY</label>
-    <input type="file" id="sky-upload" accept="image/*" hidden>
-  </div>
-  <div id="error-toast" hidden></div>
+<!-- ========== PORTRAIT LOCK ========== -->
+<div id="portrait-lock">
+  <h1>ROTATE DEVICE</h1>
+  <p>// LANDSCAPE REQUIRED //</p>
 </div>
 
+<!-- ========== START SCREEN ========== -->
+<div id="start-screen">
+
+  <div class="ss-topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>SECURE LINK // OPERATOR_001</span>
+    </div>
+    <div class="stamp">BUILD 0.1.0 // CLASSIFIED</div>
+  </div>
+
+  <div class="ss-hero">
+    <div class="preheader">TACTICAL OPERATIONS</div>
+    <h1>VOID&nbsp;ENGINE</h1>
+    <div class="subhead">REAL-TIME COMBAT SIMULATOR</div>
+    <div id="loading-text">// INITIALIZING SYSTEMS...</div>
+    <button id="btn-start" hidden>DEPLOY</button>
+  </div>
+
+  <div class="ss-loadout">
+    <div class="ll-title">LOADOUT // CUSTOM ASSETS</div>
+    <div class="cards">
+
+      <div class="op-slot">
+        <label for="weapon-upload" class="op-card weapon">
+          <div class="op-tag">SLOT 01 // PRIMARY</div>
+          <div class="op-name">WEAPON</div>
+          <div class="op-hint">Drop a .glb to override the default rifle.</div>
+        </label>
+        <input type="file" id="weapon-upload" accept=".glb,.gltf" hidden>
+        <button id="btn-clear-weapon" class="clear-btn" hidden type="button">RESET WEAPON</button>
+      </div>
+
+      <div class="op-slot">
+        <label for="map-upload" class="op-card map">
+          <div class="op-tag">SLOT 02 // ARENA</div>
+          <div class="op-name">MAP</div>
+          <div class="op-hint">Load a .glb environment to fight in.</div>
+        </label>
+        <input type="file" id="map-upload" accept=".glb,.gltf" hidden>
+        <button id="btn-clear-map" class="clear-btn" hidden type="button">RESET MAP</button>
+      </div>
+
+      <div class="op-slot">
+        <label for="sky-upload" class="op-card sky">
+          <div class="op-tag">SLOT 03 // SKY</div>
+          <div class="op-name">SKYBOX</div>
+          <div class="op-hint">Equirectangular image for the world background.</div>
+        </label>
+        <input type="file" id="sky-upload" accept="image/*" hidden>
+      </div>
+
+    </div>
+    <div id="error-toast" hidden></div>
+  </div>
+
+  <div class="ss-footer">
+    <span>VOID-ENG // FRAME-LOCK ENGAGED</span>
+    <span id="ss-time">--:--:--</span>
+  </div>
+
+</div>
+
+<!-- ========== HUD ========== -->
 <div id="hud" hidden>
-  <div id="compass"><div id="compass-indicator">|</div><div id="bearing-strip"></div></div>
+
+  <!-- Compass -->
+  <div id="compass">
+    <div id="compass-indicator">|</div>
+    <div id="bearing-strip"></div>
+  </div>
+
+  <!-- Top-left: ops panel (flavor) -->
+  <div class="ops-panel">
+    <div class="ops-title">OPERATIONS</div>
+    <div class="ops-row"><span class="ops-label">CALLSIGN</span><span class="ops-value">VOID-1</span></div>
+    <div class="ops-row"><span class="ops-label">SECTOR</span><span class="ops-value">TAC-OPS</span></div>
+    <div class="ops-row"><span class="ops-label">STATUS</span><span class="ops-value">ACTIVE</span></div>
+  </div>
+
+  <!-- Bottom-left: stylized status (no real damage system, but reads like CoD HUD) -->
+  <div class="status-panel">
+    <div class="sp-header">
+      <div class="sp-name">VOID-1</div>
+      <div class="sp-rank">// LVL 99</div>
+    </div>
+    <div class="bar-row"><span class="bar-label">HP</span><div class="bar"><div class="bar-fill"></div></div></div>
+    <div class="bar-row"><span class="bar-label">ARM</span><div class="bar"><div class="bar-fill armor"></div></div></div>
+  </div>
+
+  <!-- Touch zones / joystick -->
   <div id="touch-left"></div>
   <div id="touch-right"></div>
   <div id="joy-base"><div id="joy-stick"></div></div>
-  <div id="crosshair"><div class="ch-line ch-t"></div><div class="ch-line ch-b"></div><div class="ch-line ch-l"></div><div class="ch-line ch-r"></div></div>
-  <div id="hit-marker"><div class="hm-line hm-1"></div><div class="hm-line hm-2"></div><div class="hm-line hm-3"></div><div class="hm-line hm-4"></div></div>
+
+  <!-- Crosshair / hit marker -->
+  <div id="crosshair">
+    <div class="ch-line ch-t"></div>
+    <div class="ch-line ch-b"></div>
+    <div class="ch-line ch-l"></div>
+    <div class="ch-line ch-r"></div>
+  </div>
+  <div id="hit-marker">
+    <div class="hm-line hm-1"></div>
+    <div class="hm-line hm-2"></div>
+    <div class="hm-line hm-3"></div>
+    <div class="hm-line hm-4"></div>
+  </div>
+
+  <!-- Ammo -->
   <div id="ammo-widget">
     <div id="status-indicator"></div>
-    <div id="ammo-current">30</div><div id="ammo-max">/ 120</div>
-    <div id="kill-widget"><div class="label">KILLS</div><div id="kill-count">0</div></div>
+    <div id="ammo-current">30</div>
+    <div id="ammo-max">/ 120</div>
+    <div id="kill-widget">
+      <div class="label">KILLS</div>
+      <div id="kill-count">0</div>
+    </div>
   </div>
+
+  <!-- Overlays -->
   <div id="vignette"></div>
   <div id="flash-overlay"></div>
-  <button id="btn-fire" class="btn-action">FIRE</button>
-  <button id="btn-ads" class="btn-action">ADS</button>
-  <button id="btn-reload" class="btn-action">RLD</button>
-  <button id="btn-jump" class="btn-action">JMP</button>
-  <button id="btn-inspect" class="btn-action">CHK</button>
+
+  <!-- Action buttons (icons, CoD-mobile style) -->
+  <button id="btn-fire" class="btn-action" aria-label="Fire">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+      <line x1="12" y1="1.5" x2="12" y2="5"/>
+      <line x1="12" y1="19" x2="12" y2="22.5"/>
+      <line x1="1.5" y1="12" x2="5" y2="12"/>
+      <line x1="19" y1="12" x2="22.5" y2="12"/>
+    </svg>
+    <span class="lbl">FIRE</span>
+  </button>
+
+  <button id="btn-ads" class="btn-action" aria-label="Aim">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="7"/>
+      <line x1="12" y1="2" x2="12" y2="6"/>
+      <line x1="12" y1="18" x2="12" y2="22"/>
+      <line x1="2"  y1="12" x2="6"  y2="12"/>
+      <line x1="18" y1="12" x2="22" y2="12"/>
+      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+    </svg>
+    <span class="lbl">AIM</span>
+  </button>
+
+  <button id="btn-reload" class="btn-action" aria-label="Reload">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 12a9 9 0 1 0 3-6.7"/>
+      <polyline points="3 4 3 9 8 9"/>
+    </svg>
+    <span class="lbl">RELOAD</span>
+  </button>
+
+  <button id="btn-jump" class="btn-action" aria-label="Jump">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 11 12 5 18 11"/>
+      <line x1="12" y1="5" x2="12" y2="20"/>
+    </svg>
+    <span class="lbl">JUMP</span>
+  </button>
+
+  <button id="btn-inspect" class="btn-action" aria-label="Inspect">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="6.5"/>
+      <line x1="20" y1="20" x2="15.6" y2="15.6"/>
+    </svg>
+    <span class="lbl">CHECK</span>
+  </button>
+
 </div>
 
-<button id="btn-fullscreen" hidden><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
-<button id="btn-calibrator" hidden>CAL</button>
-<button id="btn-phys-cal" hidden>PHY</button>
+<!-- ========== UTILITY BUTTONS ========== -->
+<button id="btn-fullscreen" class="util-btn" hidden aria-label="Fullscreen">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+  </svg>
+</button>
+<button id="btn-calibrator" class="util-btn" hidden>CAL</button>
+<button id="btn-phys-cal"   class="util-btn" hidden>PHY</button>
 
+<!-- ========== PHYSICS CALIBRATOR ========== -->
 <div id="physics-ui" hidden>
   <h3>PHYSICS CALIBRATOR</h3>
-  <div class="help">If a door blocks you, lower <b>Body Radius</b>. If a step won't let you walk on it, raise <b>Step Height</b>. Changes apply live and persist.</div>
+  <div class="help">If a door blocks you, lower <b>Body Radius</b>. If a step won't let you climb, raise <b>Step Height</b>. Changes apply live and persist.</div>
+
   <div class="cal-row"><label>Body Radius</label><span id="phys-radius-val">0.18</span></div>
   <input type="range" id="phys-radius" min="0.10" max="0.40" step="0.01" value="0.18">
+
   <div class="cal-row"><label>Body Height</label><span id="phys-height-val">2.20</span></div>
   <input type="range" id="phys-height" min="1.40" max="2.50" step="0.05" value="2.20">
+
   <div class="cal-row"><label>Step Height</label><span id="phys-step-val">1.00</span></div>
   <input type="range" id="phys-step" min="0.10" max="2.00" step="0.05" value="1.00">
+
   <div class="cal-row"><label>Step Min Width</label><span id="phys-stepw-val">0.05</span></div>
   <input type="range" id="phys-stepw" min="0.01" max="0.50" step="0.01" value="0.05">
+
   <div class="cal-row"><label>Snap to Ground</label><span id="phys-snap-val">0.50</span></div>
   <input type="range" id="phys-snap" min="0.0" max="1.50" step="0.05" value="0.50">
+
   <div class="cal-row"><label>Skin Width</label><span id="phys-skin-val">0.020</span></div>
   <input type="range" id="phys-skin" min="0.005" max="0.10" step="0.005" value="0.020">
+
   <div class="cal-row"><label>Max Climb Slope</label><span id="phys-climb-val">50&deg;</span></div>
   <input type="range" id="phys-climb" min="20" max="80" step="1" value="50">
+
   <div class="cal-row"><label>Min Slide Slope</label><span id="phys-slide-val">65&deg;</span></div>
   <input type="range" id="phys-slide" min="30" max="89" step="1" value="65">
-  <div class="cal-buttons"><button id="btn-reset-phys">RESET</button><button id="btn-close-phys">DONE</button></div>
+
+  <div class="cal-buttons">
+    <button id="btn-reset-phys">RESET</button>
+    <button id="btn-close-phys">DONE</button>
+  </div>
 </div>
 
+<!-- ========== WEAPON CALIBRATOR ========== -->
 <div id="calibrator-ui" hidden>
   <h3>WEAPON CALIBRATOR</h3>
+
   <div class="cal-row"><label>Scale</label><span id="cal-s-val">1.00</span></div>
   <input type="range" id="cal-s" min="0.05" max="3" step="0.01" value="1">
+
   <div class="cal-row"><label>Pos X</label><span id="cal-x-val">0</span></div>
   <input type="range" id="cal-x" min="-1" max="1" step="0.01" value="0">
+
   <div class="cal-row"><label>Pos Y</label><span id="cal-y-val">0</span></div>
   <input type="range" id="cal-y" min="-1" max="1" step="0.01" value="0">
+
   <div class="cal-row"><label>Pos Z</label><span id="cal-z-val">0</span></div>
   <input type="range" id="cal-z" min="-1" max="1" step="0.01" value="0">
+
   <div class="cal-row"><label>Rot X</label><span id="cal-rx-val">0</span></div>
   <input type="range" id="cal-rx" min="-180" max="180" step="1" value="0">
+
   <div class="cal-row"><label>Rot Y</label><span id="cal-ry-val">180</span></div>
   <input type="range" id="cal-ry" min="-180" max="180" step="1" value="180">
+
   <div class="cal-row"><label>Rot Z</label><span id="cal-rz-val">0</span></div>
   <input type="range" id="cal-rz" min="-180" max="180" step="1" value="0">
+
   <h4>Animations <button id="btn-copy-anims">COPY</button></h4>
   <div id="anim-list" class="inspector-list">No animations</div>
+
   <h4>Meshes</h4>
   <div id="mesh-list" class="inspector-list">No meshes</div>
-  <div class="cal-buttons"><button id="btn-reset-cal">RESET</button><button id="btn-close-cal">DONE</button></div>
+
+  <div class="cal-buttons">
+    <button id="btn-reset-cal">RESET</button>
+    <button id="btn-close-cal">DONE</button>
+  </div>
 </div>
 
+<!-- ========== Live clock on start screen (cosmetic) ========== -->
+<script>
+(function(){
+  const el = document.getElementById('ss-time');
+  if (!el) return;
+  const tick = () => {
+    const d = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    el.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  };
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+
+<!-- ========== Module imports ========== -->
 <script type="importmap">
 {
   "imports": {
