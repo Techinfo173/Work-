@@ -1,0 +1,118 @@
+============================================================
+ENEMY AI ROLLOUT — 6 SEQUENTIAL PROMPTS
+Send one at a time. Wait for each to finish before sending the next.
+Test briefly between each prompt to catch issues early.
+============================================================
+
+
+============================================================
+PROMPT 1 — Foundation (loadout slot, libraries, model loading)
+============================================================
+
+Add a fourth loadout card to the start screen called "ENEMY" (yellow accent, optional). It accepts a .glb upload of a soldier character. Save the blob to IndexedDB under the key `enemy`. Add a reset button on the card. The DEPLOY button still only requires weapon + map; enemy is optional.
+
+Import `yuka@0.7` and `three-pathfinding@1.3` via the existing importmap from esm.sh. Also import `SkeletonUtils` from `three/addons/utils/SkeletonUtils.js`.
+
+When loading the enemy GLB, before any clip detection, rename animations using this map:
+
+const ENEMY_ANIM_MAP = {
+  "[Action Stash]": "idle",
+  "[Action Stash].001": "walk",
+  "[Action Stash].004": "run",
+  "[Action Stash].009": "fire",
+  "[Action Stash].010": "fire_up",
+  "[Action Stash].007": "melee",
+  "[Action Stash].008": "jump_attack"
+};
+
+If a clip's raw name matches a key, set `clip.name = value`. Auto-fit the loaded enemy model to ~1.8 units tall on first load and store the scale for later cloning. Don't add the enemy to the scene yet — just load and parse it. Persist the blob like you do for weapon/map.
+
+
+============================================================
+PROMPT 2 — Pathfinding setup
+============================================================
+
+This is a follow-up to changes already made. Don't recreate or remove anything that already exists in the project. Only add the new functionality described below. Read the current state of the files first.
+
+When the map GLB loads, after the BVH is built, generate a navmesh and feed it into a `three-pathfinding` zone.
+
+Process: traverse the map, extract only triangles whose face normal Y component is greater than 0.7 (walkable surfaces), build a merged BufferGeometry from those triangles, and pass it to `Pathfinding.createZone()`. Store the zone in a global variable.
+
+Override: if the map has any object whose name matches `/^navmesh$|^nav_mesh$/i`, use that explicit geometry instead of the auto-generated one and hide the mesh visually.
+
+Add a small console log showing how many walkable triangles were found.
+
+
+============================================================
+PROMPT 3 — Spawn enemies and basic AI scaffolding
+============================================================
+
+This is a follow-up to changes already made. Don't recreate or remove anything that already exists in the project. Only add the new functionality described below. Read the current state of the files first.
+
+After the map loads and an enemy GLB is loaded, spawn enemies. Find any objects in the map whose name matches `/^enemy[_-]?spawn/i` and spawn one enemy at each location. If no spawn markers exist, spawn 4 enemies at random walkable navmesh points at least 15 units from the player's spawn. Cap concurrent enemies at 8 desktop / 4 mobile.
+
+Each enemy is a clone using `SkeletonUtils.clone` so animations work independently. Each enemy gets:
+- Its own `AnimationMixer` and detected actions (idle, walk, run, fire, fire_up, melee, jump_attack)
+- A yuka `Vehicle` for movement
+- A Rapier `KinematicCharacterController` with `radius: 0.25`, `height: 1.8`
+- A simple state machine with one default state: `patrol`
+- An HP value of 60
+
+For now, every enemy just plays its `idle` clip and stands still. We'll add behavior in the next prompt.
+
+
+============================================================
+PROMPT 4 — Patrol, Investigate, vision, hearing
+============================================================
+
+This is a follow-up to changes already made. Don't recreate or remove anything that already exists in the project. Only add the new functionality described below. Read the current state of the files first.
+
+Implement these enemy states with a yuka state machine. Each state plays the right animation clip with the same cross-fade weight blending system already used for the player weapon (never stop locomotion clips, just shift weights).
+
+- Patrol: pick a random navmesh point within 15 units, path via `Pathfinding.findPath()`, walk at 2.5 u/s. On arrival, idle for 1–3 seconds, then pick a new point. Plays `walk` clip while moving, `idle` when stopped.
+- Investigate: go to a target position passed in via the noise system. After arriving, look around for 2 seconds, then return to Patrol. Plays `walk`.
+
+Vision: each frame, check if the player is in the enemy's 90° forward cone (dot product > 0.5), within 25 units, and not blocked by a BVH raycast from enemy chest to player camera. If all three pass, set the enemy's state to "chase target" (we'll implement Chase in the next prompt) and remember the player's position.
+
+Hearing: when the player fires, broadcast a noise event with the player's world position and radius 30. Any enemy currently in Patrol within that radius transitions to Investigate, targeting the player's position.
+
+Performance: skip enemy AI ticks if the enemy is more than 50 units from the player (freeze in place). On mobile, run AI updates every other frame. Only the 3 closest enemies do vision raycasts each frame; the rest cycle round-robin.
+
+
+============================================================
+PROMPT 5 — Chase, Attack, Dead, damage
+============================================================
+
+This is a follow-up to changes already made. Don't recreate or remove anything that already exists in the project. Only add the new functionality described below. Read the current state of the files first.
+
+Add three more states to complete the enemy AI:
+
+- Chase: triggered when an enemy sees the player. Path to the player at 5 u/s, repath every 0.5 seconds. Plays `run`. When within 12 units AND line of sight is clear, transition to Attack. If sight is lost, stay in Chase for 3 seconds of "memory" then drop to Investigate at the last known position.
+- Attack: stop moving, face the player. Fire a hitscan from the enemy's chest toward the player every 1.0–1.5 seconds (randomized). If the hitscan hits the player, deduct 8–15 HP. Use the `fire_up` clip if the player's Y is more than 2 units above the enemy, otherwise `fire`. If the player gets within 2 units, switch to melee: play `melee` clip, deduct 25 HP, 1-second cooldown. When out of attack range, return to Chase.
+- Dead: disable AI, freeze the mixer on the current frame, tip the model by rotating its Z axis 90° over 0.5 seconds, fade the model out, and remove it from the scene after 5 seconds.
+
+Damage to enemies: the player's existing hitscan now also raycasts against an array of enemy collider meshes. On hit, deduct from enemy HP (60 max), apply a brief stagger (push model back 0.1u over 0.15s). When HP hits 0, transition the enemy to Dead and increment the player's hits counter (only on confirmed kills).
+
+When the locomotion master clip transitions to fire/melee/jump_attack, fade the locomotion layer master weight to 0 over 120ms, restore over 150ms when the overlay finishes.
+
+
+============================================================
+PROMPT 6 — Player HP, HUD, damage indicator
+============================================================
+
+This is a follow-up to changes already made. Don't recreate or remove anything that already exists in the project. Only add the new functionality described below. Read the current state of the files first.
+
+Make player HP real. Replace the cosmetic HP bar with a live value: 100 max, regenerates 5 HP/s after 4 seconds without taking damage. When HP hits 0, fade the screen to red, freeze input for 2 seconds, respawn at the spawn point with full HP and full armor. Armor: 50 max, absorbs 60% of incoming damage, does not regenerate.
+
+Update the HUD HP and ARM bar widths to match the live values, and update the numeric values next to them.
+
+Add an enemy counter HUD element at the bottom-right above the ammo widget showing "ENEMIES: alive/total" — small mono font, orange accent.
+
+When an enemy is killed, briefly flash the existing hit-marker RED instead of white (passing `isKill: true` to `showHitMarker()`), make it 50% larger, and add a slight rotation jitter.
+
+When the player takes damage from an enemy, flash a red directional indicator at the screen edge pointing toward the attacker. Use a CSS class `.dmg-indicator` with a triangle/arrow rotated based on the angle from player forward to attacker. Auto-fade after 1 second.
+
+
+============================================================
+END
+============================================================
